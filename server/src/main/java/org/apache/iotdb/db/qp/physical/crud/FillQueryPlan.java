@@ -18,7 +18,6 @@
  */
 package org.apache.iotdb.db.qp.physical.crud;
 
-import org.apache.iotdb.db.exception.query.QueryProcessException;
 import org.apache.iotdb.db.qp.logical.Operator;
 import org.apache.iotdb.db.query.executor.fill.IFill;
 import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
@@ -52,10 +51,7 @@ public class FillQueryPlan extends RawDataQueryPlan {
   }
 
   @Override
-  public void setAlignByTime(boolean align) throws QueryProcessException {
-    if (!align) {
-      throw new QueryProcessException(
-          getOperatorType().name() + " doesn't support disable align clause.");
-    }
+  public boolean isRawQuery() {
+    return false;
   }
 }

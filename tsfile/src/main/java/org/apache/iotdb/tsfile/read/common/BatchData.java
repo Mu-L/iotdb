@@ -31,6 +31,7 @@ import org.apache.iotdb.tsfile.utils.TsPrimitiveType.TsDouble;
 import org.apache.iotdb.tsfile.utils.TsPrimitiveType.TsFloat;
 import org.apache.iotdb.tsfile.utils.TsPrimitiveType.TsInt;
 import org.apache.iotdb.tsfile.utils.TsPrimitiveType.TsLong;
+import org.apache.iotdb.tsfile.utils.TsPrimitiveType.TsVector;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -57,6 +58,8 @@ public class BatchData {
 
   protected TSDataType dataType;
 
+  protected BatchDataType batchDataType = BatchDataType.Ordinary;
+
   // outer list index for read
   protected int readCurListIndex;
   // inner array index for read
@@ -77,6 +80,7 @@ public class BatchData {
   protected List<float[]> floatRet;
   protected List<double[]> doubleRet;
   protected List<Binary[]> binaryRet;
+  protected List<TsPrimitiveType[][]> vectorRet;
 
   public BatchData() {
     dataType = null;
@@ -134,6 +138,8 @@ public class BatchData {
         return getBoolean();
       case TEXT:
         return getBinary();
+      case VECTOR:
+        return getVector();
       default:
         return null;
     }
@@ -153,6 +159,8 @@ public class BatchData {
         return new TsBoolean(getBoolean());
       case TEXT:
         return new TsBinary(getBinary());
+      case VECTOR:
+        return new TsVector(getVector());
       default:
         return null;
     }
@@ -160,6 +168,10 @@ public class BatchData {
 
   public TSDataType getDataType() {
     return dataType;
+  }
+
+  public BatchDataType getBatchDataType() {
+    return batchDataType;
   }
 
   /**
@@ -202,6 +214,10 @@ public class BatchData {
       case TEXT:
         binaryRet = new ArrayList<>();
         binaryRet.add(new Binary[capacity]);
+        break;
+      case VECTOR:
+        vectorRet = new ArrayList<>();
+        vectorRet.add(new TsPrimitiveType[capacity][]);
         break;
       default:
         throw new UnSupportedDataTypeException(String.valueOf(dataType));
@@ -417,6 +433,41 @@ public class BatchData {
     count++;
   }
 
+  /**
+   * put vector data.
+   *
+   * @param t timestamp
+   * @param v vector data.
+   */
+  public void putVector(long t, TsPrimitiveType[] v) {
+    if (writeCurArrayIndex == capacity) {
+      if (capacity >= CAPACITY_THRESHOLD) {
+        timeRet.add(new long[capacity]);
+        vectorRet.add(new TsPrimitiveType[capacity][]);
+        writeCurListIndex++;
+        writeCurArrayIndex = 0;
+      } else {
+        int newCapacity = capacity << 1;
+
+        long[] newTimeData = new long[newCapacity];
+        TsPrimitiveType[][] newValueData = new TsPrimitiveType[newCapacity][];
+
+        System.arraycopy(timeRet.get(0), 0, newTimeData, 0, capacity);
+        System.arraycopy(vectorRet.get(0), 0, newValueData, 0, capacity);
+
+        timeRet.set(0, newTimeData);
+        vectorRet.set(0, newValueData);
+
+        capacity = newCapacity;
+      }
+    }
+    timeRet.get(writeCurListIndex)[writeCurArrayIndex] = t;
+    vectorRet.get(writeCurListIndex)[writeCurArrayIndex] = v;
+
+    writeCurArrayIndex++;
+    count++;
+  }
+
   public boolean getBoolean() {
     return this.booleanRet.get(readCurListIndex)[readCurArrayIndex];
   }
@@ -465,6 +516,14 @@ public class BatchData {
     this.binaryRet.get(readCurListIndex)[readCurArrayIndex] = v;
   }
 
+  public TsPrimitiveType[] getVector() {
+    return this.vectorRet.get(readCurListIndex)[readCurArrayIndex];
+  }
+
+  public void setVector(TsPrimitiveType[] v) {
+    this.vectorRet.get(readCurListIndex)[readCurArrayIndex] = v;
+  }
+
   public void setTime(long v) {
     this.timeRet.get(readCurListIndex)[readCurArrayIndex] = v;
   }
@@ -494,6 +553,9 @@ public class BatchData {
         break;
       case TEXT:
         putBinary(t, (Binary) v);
+        break;
+      case VECTOR:
+        putVector(t, (TsPrimitiveType[]) v);
         break;
       default:
         throw new UnSupportedDataTypeException(String.valueOf(dataType));
@@ -530,6 +592,10 @@ public class BatchData {
 
   public boolean getBooleanByIndex(int idx) {
     return booleanRet.get(idx / capacity)[idx % capacity];
+  }
+
+  public TsPrimitiveType[] getVectorByIndex(int idx) {
+    return vectorRet.get(idx / capacity)[idx % capacity];
   }
 
   public TimeValuePair getLastPairBeforeOrEqualTimestamp(long queryTime) {
@@ -598,5 +664,32 @@ public class BatchData {
    */
   public BatchData flip() {
     return this;
+  }
+
+  public enum BatchDataType {
+    Ordinary,
+    DescRead,
+    DescReadWrite;
+
+    BatchDataType() {}
+
+    /**
+     * give an integer to return a BatchType type.
+     *
+     * @param type -param to judge enum type
+     * @return -enum type
+     */
+    public static BatchData deserialize(byte type, TSDataType dataType) {
+      switch (type) {
+        case 0:
+          return new BatchData(dataType);
+        case 1:
+          return new DescReadBatchData(dataType);
+        case 2:
+          return new DescReadWriteBatchData(dataType);
+        default:
+          throw new IllegalArgumentException("Invalid input: " + type);
+      }
+    }
   }
 }

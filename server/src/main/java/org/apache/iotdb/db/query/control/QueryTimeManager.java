@@ -22,6 +22,8 @@ import org.apache.iotdb.db.concurrent.IoTDBThreadPoolFactory;
 import org.apache.iotdb.db.conf.IoTDBConfig;
 import org.apache.iotdb.db.conf.IoTDBDescriptor;
 import org.apache.iotdb.db.exception.query.QueryTimeoutRuntimeException;
+import org.apache.iotdb.db.qp.physical.PhysicalPlan;
+import org.apache.iotdb.db.qp.physical.sys.ShowQueryProcesslistPlan;
 import org.apache.iotdb.db.service.IService;
 import org.apache.iotdb.db.service.ServiceType;
 
@@ -61,19 +63,28 @@ public class QueryTimeManager implements IService {
   }
 
   public void registerQuery(long queryId, long startTime, String sql, long timeout) {
-    final long finalTimeout = timeout == 0 ? config.getQueryTimeoutThreshold() : timeout;
     queryInfoMap.put(queryId, new QueryInfo(startTime, sql));
-    // submit a scheduled task to judge whether query is still running after timeout
-    ScheduledFuture<?> scheduledFuture =
-        executorService.schedule(
-            () -> {
-              killQuery(queryId);
-              logger.warn(
-                  String.format("Query is time out (%dms) with queryId %d", finalTimeout, queryId));
-            },
-            finalTimeout,
-            TimeUnit.MILLISECONDS);
-    queryScheduledTaskMap.put(queryId, scheduledFuture);
+    if (timeout != 0) {
+      // submit a scheduled task to judge whether query is still running after timeout
+      ScheduledFuture<?> scheduledFuture =
+          executorService.schedule(
+              () -> {
+                killQuery(queryId);
+                logger.warn(
+                    String.format("Query is time out (%dms) with queryId %d", timeout, queryId));
+              },
+              timeout,
+              TimeUnit.MILLISECONDS);
+      queryScheduledTaskMap.put(queryId, scheduledFuture);
+    }
+  }
+
+  public void registerQuery(
+      long queryId, long startTime, String sql, long timeout, PhysicalPlan plan) {
+    if (plan instanceof ShowQueryProcesslistPlan) {
+      return;
+    }
+    registerQuery(queryId, startTime, sql, timeout);
   }
 
   public void killQuery(long queryId) {
@@ -94,9 +105,15 @@ public class QueryTimeManager implements IService {
           if (scheduledFuture != null) {
             scheduledFuture.cancel(false);
           }
+          SessionTimeoutManager.getInstance()
+              .refresh(SessionManager.getInstance().getSessionIdByQueryId(queryId));
           return null;
         });
     return successRemoved;
+  }
+
+  public AtomicBoolean unRegisterQuery(long queryId, PhysicalPlan plan) {
+    return plan instanceof ShowQueryProcesslistPlan ? null : unRegisterQuery(queryId);
   }
 
   public static void checkQueryAlive(long queryId) {

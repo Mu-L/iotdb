@@ -25,10 +25,8 @@ import org.apache.iotdb.db.exception.query.QueryProcessException;
 import org.apache.iotdb.db.metadata.PartialPath;
 import org.apache.iotdb.db.qp.physical.crud.InsertRowPlan;
 import org.apache.iotdb.db.qp.physical.crud.InsertTabletPlan;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSEncoding;
 import org.apache.iotdb.tsfile.read.common.TimeRange;
-import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
+import org.apache.iotdb.tsfile.write.schema.IMeasurementSchema;
 
 import java.io.IOException;
 import java.util.List;
@@ -46,12 +44,7 @@ public interface IMemTable {
 
   Map<String, Map<String, IWritableMemChunk>> getMemTableMap();
 
-  void write(
-      String deviceId,
-      String measurement,
-      MeasurementSchema schema,
-      long insertTime,
-      Object objectValue);
+  void write(String deviceId, IMeasurementSchema schema, long insertTime, Object objectValue);
 
   void write(InsertTabletPlan insertTabletPlan, int start, int end);
 
@@ -63,6 +56,9 @@ public interface IMemTable {
 
   /** only used when mem control enabled */
   void addTVListRamCost(long cost);
+
+  /** only used when mem control enabled */
+  void releaseTVListRamCost(long cost);
 
   /** only used when mem control enabled */
   long getTVListsRamCost();
@@ -78,19 +74,28 @@ public interface IMemTable {
 
   long getTotalPointsNum();
 
+  /**
+   * insert into this memtable
+   *
+   * @param insertRowPlan insertRowPlan
+   */
   void insert(InsertRowPlan insertRowPlan);
 
-  /** [start, end) */
+  /**
+   * insert tablet into this memtable
+   *
+   * @param insertTabletPlan insertTabletPlan
+   * @param start included
+   * @param end excluded
+   */
   void insertTablet(InsertTabletPlan insertTabletPlan, int start, int end)
       throws WriteProcessException;
 
   ReadOnlyMemChunk query(
       String deviceId,
       String measurement,
-      TSDataType dataType,
-      TSEncoding encoding,
-      Map<String, String> props,
-      long timeLowerBound,
+      IMeasurementSchema schema,
+      long ttlLowerBound,
       List<TimeRange> deletionList)
       throws IOException, QueryProcessException, MetadataException;
 
@@ -119,6 +124,11 @@ public interface IMemTable {
 
   boolean isSignalMemTable();
 
+  void setShouldFlush();
+
+  boolean shouldFlush();
+
+  /** release resource of this memtable */
   void release();
 
   /** must guarantee the device exists in the work memtable only used when mem control enabled */
@@ -130,7 +140,12 @@ public interface IMemTable {
   /** only used when mem control enabled */
   void addTextDataSize(long textDataIncrement);
 
+  /** only used when mem control enabled */
+  void releaseTextDataSize(long textDataDecrement);
+
   long getMaxPlanIndex();
 
   long getMinPlanIndex();
+
+  long getCreatedTime();
 }

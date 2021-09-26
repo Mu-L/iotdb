@@ -313,13 +313,12 @@ public class IoTDBSeriesReaderIT {
         new PartialPath(TestConstant.d1 + TsFileConstant.PATH_SEPARATOR + TestConstant.s1));
     dataTypes.add(TSDataType.INT64);
 
-    TEST_QUERY_JOB_ID =
-        QueryResourceManager.getInstance().assignQueryId(true, 1024, pathList.size());
+    TEST_QUERY_JOB_ID = QueryResourceManager.getInstance().assignQueryId(true);
     TEST_QUERY_CONTEXT = new QueryContext(TEST_QUERY_JOB_ID);
 
     RawDataQueryPlan queryPlan = new RawDataQueryPlan();
     queryPlan.setDeduplicatedDataTypes(dataTypes);
-    queryPlan.setDeduplicatedPaths(pathList);
+    queryPlan.setDeduplicatedPathsAndUpdate(pathList);
     QueryDataSet queryDataSet = queryRouter.rawDataQuery(queryPlan, TEST_QUERY_CONTEXT);
 
     int cnt = 0;
@@ -345,13 +344,12 @@ public class IoTDBSeriesReaderIT {
     SingleSeriesExpression singleSeriesExpression =
         new SingleSeriesExpression(p, ValueFilter.gtEq(20));
 
-    TEST_QUERY_JOB_ID =
-        QueryResourceManager.getInstance().assignQueryId(true, 1024, pathList.size());
+    TEST_QUERY_JOB_ID = QueryResourceManager.getInstance().assignQueryId(true);
     TEST_QUERY_CONTEXT = new QueryContext(TEST_QUERY_JOB_ID);
 
     RawDataQueryPlan queryPlan = new RawDataQueryPlan();
     queryPlan.setDeduplicatedDataTypes(dataTypes);
-    queryPlan.setDeduplicatedPaths(pathList);
+    queryPlan.setDeduplicatedPathsAndUpdate(pathList);
     queryPlan.setExpression(singleSeriesExpression);
     QueryDataSet queryDataSet = queryRouter.rawDataQuery(queryPlan, TEST_QUERY_CONTEXT);
 
@@ -374,12 +372,12 @@ public class IoTDBSeriesReaderIT {
     List<TSDataType> dataTypes = Collections.singletonList(TSDataType.INT32);
     SingleSeriesExpression expression = new SingleSeriesExpression(path, TimeFilter.gt(22987L));
 
-    TEST_QUERY_JOB_ID = QueryResourceManager.getInstance().assignQueryId(true, 1024, 1);
+    TEST_QUERY_JOB_ID = QueryResourceManager.getInstance().assignQueryId(true);
     TEST_QUERY_CONTEXT = new QueryContext(TEST_QUERY_JOB_ID);
 
     RawDataQueryPlan queryPlan = new RawDataQueryPlan();
     queryPlan.setDeduplicatedDataTypes(dataTypes);
-    queryPlan.setDeduplicatedPaths(Collections.singletonList(path));
+    queryPlan.setDeduplicatedPathsAndUpdate(Collections.singletonList(path));
     queryPlan.setExpression(expression);
     QueryDataSet queryDataSet = queryRouter.rawDataQuery(queryPlan, TEST_QUERY_CONTEXT);
 
@@ -407,15 +405,14 @@ public class IoTDBSeriesReaderIT {
     List<PartialPath> pathList = new ArrayList<>();
     pathList.add(path1);
     pathList.add(path2);
-    queryPlan.setDeduplicatedPaths(pathList);
+    queryPlan.setDeduplicatedPathsAndUpdate(pathList);
 
     List<TSDataType> dataTypes = new ArrayList<>();
     dataTypes.add(TSDataType.INT32);
     dataTypes.add(TSDataType.INT64);
     queryPlan.setDeduplicatedDataTypes(dataTypes);
 
-    TEST_QUERY_JOB_ID =
-        QueryResourceManager.getInstance().assignQueryId(true, 1024, pathList.size());
+    TEST_QUERY_JOB_ID = QueryResourceManager.getInstance().assignQueryId(true);
     TEST_QUERY_CONTEXT = new QueryContext(TEST_QUERY_JOB_ID);
 
     SingleSeriesExpression singleSeriesExpression =

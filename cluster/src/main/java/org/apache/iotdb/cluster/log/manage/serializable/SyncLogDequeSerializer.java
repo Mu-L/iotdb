@@ -450,11 +450,6 @@ public class SyncLogDequeSerializer implements StableEntryManager {
     this.firstLogIndex = meta.getCommitLogIndex() + 1;
     try {
       recoverLogFiles();
-
-      logDataFileList.sort(this::comparePersistLogFileName);
-
-      logIndexFileList.sort(this::comparePersistLogFileName);
-
       // add init log file
       if (logDataFileList.isEmpty()) {
         createNewLogFile(metaFile.getParentFile().getPath(), meta.getCommitLogIndex() + 1);
@@ -472,6 +467,10 @@ public class SyncLogDequeSerializer implements StableEntryManager {
 
     // 2. recover the log data file
     recoverLogFiles(LOG_DATA_FILE_SUFFIX);
+
+    // sort by name before recover
+    logDataFileList.sort(this::comparePersistLogFileName);
+    logIndexFileList.sort(this::comparePersistLogFileName);
 
     // 3. recover the last log file in case of abnormal exit
     recoverTheLastLogFile();
@@ -813,7 +812,7 @@ public class SyncLogDequeSerializer implements StableEntryManager {
   private void serializeMeta(LogManagerMeta meta) {
     File tempMetaFile = SystemFileFactory.INSTANCE.getFile(logDir + LOG_META_TMP);
     tempMetaFile.getParentFile().mkdirs();
-    logger.debug("Serializing log meta into {}", tempMetaFile.getPath());
+    logger.trace("Serializing log meta into {}", tempMetaFile.getPath());
     try (FileOutputStream tempMetaFileOutputStream = new FileOutputStream(tempMetaFile)) {
       ReadWriteIOUtils.write(minAvailableVersion, tempMetaFileOutputStream);
       ReadWriteIOUtils.write(maxAvailableVersion, tempMetaFileOutputStream);
@@ -835,7 +834,7 @@ public class SyncLogDequeSerializer implements StableEntryManager {
 
     // rebuild meta stream
     this.meta = meta;
-    logger.debug("Serialized log meta into {}", tempMetaFile.getPath());
+    logger.trace("Serialized log meta into {}", tempMetaFile.getPath());
   }
 
   @Override
