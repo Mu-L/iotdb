@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.apache.iotdb.rpc.RpcUtils;
@@ -23,13 +24,15 @@ import org.apache.iotdb.rpc.StatementExecutionException;
 import org.apache.iotdb.service.rpc.thrift.IClientRPCService;
 import org.apache.iotdb.service.rpc.thrift.TSFetchMetadataReq;
 import org.apache.iotdb.service.rpc.thrift.TSFetchMetadataResp;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.read.common.block.TsBlock;
-import org.apache.iotdb.tsfile.read.common.block.TsBlockBuilder;
-import org.apache.iotdb.tsfile.read.common.block.column.TsBlockSerde;
-import org.apache.iotdb.tsfile.utils.Binary;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.thrift.TException;
+import org.apache.tsfile.common.conf.TSFileConfig;
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.read.common.block.TsBlock;
+import org.apache.tsfile.read.common.block.TsBlockBuilder;
+import org.apache.tsfile.read.common.block.column.TsBlockSerde;
+import org.apache.tsfile.utils.Binary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -42,6 +45,7 @@ import java.sql.RowIdLifetime;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.sql.Types;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -53,9 +57,11 @@ import java.util.TreeMap;
 
 public class IoTDBDatabaseMetadata implements DatabaseMetaData {
 
+  private static final org.slf4j.Logger logger =
+      org.slf4j.LoggerFactory.getLogger(IoTDBDatabaseMetadata.class);
   private IoTDBConnection connection;
   private IClientRPCService.Iface client;
-  private static final Logger logger = LoggerFactory.getLogger(IoTDBDatabaseMetadata.class);
+  private static final Logger LOGGER = LoggerFactory.getLogger(IoTDBDatabaseMetadata.class);
   private static final String METHOD_NOT_SUPPORTED_STRING = "Method not supported";
   // when running the program in IDE, we can not get the version info using
   // getImplementationVersion()
@@ -64,15 +70,88 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
           ? IoTDBDatabaseMetadata.class.getPackage().getImplementationVersion()
           : "UNKNOWN";
   private long sessionId;
-  private WatermarkEncoder groupedLSBWatermarkEncoder;
+  private ZoneId zoneId;
   private static String sqlKeywordsThatArentSQL92;
   private static TsBlockSerde serde = new TsBlockSerde();
 
+  private static final String SHOW_DATABASES_SQL = "SHOW DATABASES ";
+
+  private static final String PRECISION = "PRECISION";
+
+  private static final String PRIMARY = "PRIMARY";
+
+  private static final String DOUBLE = "DOUBLE";
+  private static final String BOOLEAN = "BOOLEAN";
+  private static final String FLOAT = "FLOAT";
+  private static final String INT32 = "INT32";
+
+  private static final String INT64 = "INT64";
+
+  private static final String TYPE_CAT = "TYPE_CAT";
+
+  private static final String TYPE_NAME = "TYPE_NAME";
+
+  private static final String REMARKS = "REMARKS";
+
+  private static final String IS_NULLABLE = "IS_NULLABLE";
+
+  private static final String COLUMN_NAME = "COLUMN_NAME";
+
+  private static final String TABLE_CAT = "TABLE_CAT";
+
+  private static final String TABLE_SCHEM = "TABLE_SCHEM";
+
+  private static final String TABLE_NAME = "TABLE_NAME";
+
+  private static final String PKTABLE_CAT = "PKTABLE_CAT";
+
+  private static final String PKTABLE_SCHEM = "PKTABLE_SCHEM";
+
+  private static final String PKTABLE_NAME = "PKTABLE_NAME";
+
+  private static final String PKCOLUMN_NAME = "PKCOLUMN_NAME";
+
+  private static final String FKTABLE_CAT = "FKTABLE_CAT";
+
+  private static final String FKTABLE_SCHEM = "FKTABLE SCHEM";
+
+  private static final String FKTABLE_NAME = "FKTABLE_NAME";
+
+  private static final String FKCOLUMN_NAME = "FKCOLUMN_NAME";
+
+  private static final String KEY_SEQ = "KEY_SEQ";
+
+  private static final String DELETE_RULE = "DELETE_RULE";
+
+  private static final String FK_NAME = "FK_NAME";
+
+  private static final String PK_NAME = "PK_NAME";
+
+  private static final String DEFERRABILITY = "DEFERRABILITY";
+
+  private static final String SPECIFIC_NAME = "SPECIFIC_NAME";
+
+  private static final String TABLE_TYPE = "TABLE_TYPE";
+  private static final String SHOW_FUNCTIONS = "show functions";
+  private static final String DECIMAL_DIGITS = "DECIMAL_DIGITS";
+  private static final String SQL_DATETIME_SUB = "SQL_DATETIME_SUB";
+  private static final String CHAR_OCTET_LENGTH = "CHAR_OCTET_LENGTH";
+  private static final String COLUMN_SIZE = "COLUMN_SIZE";
+  private static final String BUFFER_LENGTH = "BUFFER_LENGTH";
+  private static final String DATA_TYPE = "DATA_TYPE";
+  private static final String NUM_PREC_RADIX = "NUM_PREC_RADIX";
+  private static final String SQL_DATA_TYPE = "SQL_DATA_TYPE";
+  private static final String ORDINAL_POSITION = "ORDINAL_POSITION";
+  private static final String NULLABLE = "NULLABLE";
+
+  private static final String CONVERT_ERROR_MSG = "convert tsBlock error: {}";
+
   IoTDBDatabaseMetadata(
-      IoTDBConnection connection, IClientRPCService.Iface client, long sessionId) {
+      IoTDBConnection connection, IClientRPCService.Iface client, long sessionId, ZoneId zoneId) {
     this.connection = connection;
     this.client = client;
     this.sessionId = sessionId;
+    this.zoneId = zoneId;
   }
 
   static {
@@ -87,7 +166,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "AS",
       "ASC",
       "BY",
-      "BOOLEAN",
+      BOOLEAN,
       "BITMAP",
       "CREATE",
       "CONFIGURATION",
@@ -103,7 +182,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "DEVICE",
       "DESCRIBE",
       "DATATYPE",
-      "DOUBLE",
+      DOUBLE,
       "DIFF",
       "DROP",
       "DEVICES",
@@ -112,7 +191,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "ENCODING",
       "FROM",
       "FILL",
-      "FLOAT",
+      FLOAT,
       "FLUSH",
       "FIRST_VALUE",
       "FULL",
@@ -127,8 +206,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "GZIP",
       "INSERT",
       "INTO",
-      "INT32",
-      "INT64",
+      INT32,
+      INT64,
       "INDEX",
       "INFO",
       "KILL",
@@ -147,8 +226,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "LZMA2",
       "LATEST",
       "LIKE",
+      "MAX_BY",
+      "MIN_BY",
       "METADATA",
-      "MERGE",
       "MOVE",
       "MIN_TIME",
       "MAX_TIME",
@@ -186,6 +266,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "SET",
       "SLIMIT",
       "SOFFSET",
+      "STDDEV",
+      "STDDEV_POP",
+      "STDDEV_SAMP",
       "STORAGE",
       "SUM",
       "SNAPPY",
@@ -213,6 +296,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "UNSET",
       "UNCOMPRESSED",
       "VALUES",
+      "VARIANCE",
+      "VAR_POP",
+      "VAR_SAMP",
       "VERSION",
       "WHERE",
       "WITH",
@@ -236,7 +322,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "POSITION",
       "ALLOCATE",
       "FALSE",
-      "PRECISION",
+      PRECISION,
       "ALTER",
       "FETCH",
       "PREPARE",
@@ -244,8 +330,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "FIRST",
       "PRESERVE",
       "ANY",
-      "FLOAT",
-      "PRIMARY",
+      FLOAT,
+      PRIMARY,
       "ARE",
       "FOR",
       "PRIOR",
@@ -432,7 +518,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       "DOMAIN",
       "ON",
       "WHEN",
-      "DOUBLE",
+      DOUBLE,
       "ONLY",
       "WHENEVER",
       "DROP",
@@ -467,7 +553,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     while (it.hasNext()) {
       myKeywordMap.remove(it.next());
     }
-    StringBuffer keywordBuf = new StringBuffer();
+    StringBuilder keywordBuf = new StringBuilder();
     it = myKeywordMap.keySet().iterator();
     if (it.hasNext()) {
       keywordBuf.append(it.next().toString());
@@ -477,20 +563,6 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       keywordBuf.append(it.next().toString());
     }
     sqlKeywordsThatArentSQL92 = keywordBuf.toString();
-  }
-
-  private WatermarkEncoder getWatermarkEncoder() {
-    try {
-      groupedLSBWatermarkEncoder =
-          new GroupedLSBWatermarkEncoder(
-              client.getProperties().getWatermarkSecretKey(),
-              client.getProperties().getWatermarkBitString(),
-              client.getProperties().getWatermarkParamMarkRate(),
-              client.getProperties().getWatermarkParamMaxRightBit());
-    } catch (TException e) {
-      e.printStackTrace();
-    }
-    return groupedLSBWatermarkEncoder;
   }
 
   @Override
@@ -562,34 +634,34 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[21];
-      fields[0] = new Field("", "TYPE_CAT", "TEXT");
+      fields[0] = new Field("", TYPE_CAT, "TEXT");
       fields[1] = new Field("", "TYPE_SCHEM", "TEXT");
-      fields[2] = new Field("", "TYPE_NAME", "TEXT");
+      fields[2] = new Field("", TYPE_NAME, "TEXT");
       fields[3] = new Field("", "ATTR_NAME", "TEXT");
-      fields[4] = new Field("", "DATA_TYPE", "INT32");
+      fields[4] = new Field("", DATA_TYPE, INT32);
       fields[5] = new Field("", "ATTR_TYPE_NAME", "TEXT");
-      fields[6] = new Field("", "ATTR_SIZE", "INT32");
-      fields[7] = new Field("", "DECIMAL_DIGITS", "INT32");
-      fields[8] = new Field("", "NUM_PREC_RADIX", "INT32");
-      fields[9] = new Field("", "NULLABLE ", "INT32");
-      fields[10] = new Field("", "REMARKS", "TEXT");
+      fields[6] = new Field("", "ATTR_SIZE", INT32);
+      fields[7] = new Field("", DECIMAL_DIGITS, INT32);
+      fields[8] = new Field("", NUM_PREC_RADIX, INT32);
+      fields[9] = new Field("", "NULLABLE ", INT32);
+      fields[10] = new Field("", REMARKS, "TEXT");
       fields[11] = new Field("", "ATTR_DEF", "TEXT");
-      fields[12] = new Field("", "SQL_DATA_TYPE", "INT32");
-      fields[13] = new Field("", "SQL_DATETIME_SUB", "INT32");
-      fields[14] = new Field("", "CHAR_OCTET_LENGTH", "INT32");
-      fields[15] = new Field("", "ORDINAL_POSITION", "INT32");
-      fields[16] = new Field("", "IS_NULLABLE", "TEXT");
+      fields[12] = new Field("", SQL_DATA_TYPE, INT32);
+      fields[13] = new Field("", SQL_DATETIME_SUB, INT32);
+      fields[14] = new Field("", CHAR_OCTET_LENGTH, INT32);
+      fields[15] = new Field("", ORDINAL_POSITION, INT32);
+      fields[16] = new Field("", IS_NULLABLE, "TEXT");
       fields[17] = new Field("", "SCOPE_CATALOG", "TEXT");
       fields[18] = new Field("", "SCOPE_SCHEMA", "TEXT");
       fields[19] = new Field("", "SCOPE_TABLE", "TEXT");
-      fields[20] = new Field("", "SOURCE_DATA_TYPE", "INT32");
+      fields[20] = new Field("", "SOURCE_DATA_TYPE", INT32);
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
         columnTypeList.add(fields[i].getSqlType());
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get attributes error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -606,7 +678,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -618,14 +691,14 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[8];
-      fields[0] = new Field("", "SCOPE", "INT32");
-      fields[1] = new Field("", "COLUMN_NAME", "TEXT");
-      fields[2] = new Field("", "DATA_TYPE", "INT32");
-      fields[3] = new Field("", "TYPE_NAME", "TEXT");
-      fields[4] = new Field("", "COLUMN_SIZE", "INT32");
-      fields[5] = new Field("", "BUFFER_LENGTH", "INT32");
-      fields[6] = new Field("", "DECIMAL_DIGITS", "INT32");
-      fields[7] = new Field("", "PSEUDO_COLUMN", "INT32");
+      fields[0] = new Field("", "SCOPE", INT32);
+      fields[1] = new Field("", COLUMN_NAME, "TEXT");
+      fields[2] = new Field("", DATA_TYPE, INT32);
+      fields[3] = new Field("", TYPE_NAME, "TEXT");
+      fields[4] = new Field("", COLUMN_SIZE, INT32);
+      fields[5] = new Field("", BUFFER_LENGTH, INT32);
+      fields[6] = new Field("", DECIMAL_DIGITS, INT32);
+      fields[7] = new Field("", "PSEUDO_COLUMN", INT32);
 
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
@@ -633,7 +706,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get best row identifier error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -651,7 +724,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -664,10 +738,19 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     return "database";
   }
 
+  @SuppressWarnings(
+      "squid:S2095") // ignore Use try-with-resources or close this "Statement" in a "finally"
+  // clause
   @Override
   public ResultSet getCatalogs() throws SQLException {
     Statement stmt = this.connection.createStatement();
-    ResultSet rs = stmt.executeQuery("SHOW DATABASES ");
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(SHOW_DATABASES_SQL);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
 
     List<String> columnNameList = new ArrayList<>();
     List<String> columnTypeList = new ArrayList<>();
@@ -681,15 +764,15 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       values.add(rs.getString(1));
       valuesList.add(values);
     }
-    columnNameList.add("TYPE_CAT");
+    columnNameList.add(TYPE_CAT);
     columnTypeList.add("TEXT");
-    columnNameIndex.put("TYPE_CAT", 0);
+    columnNameIndex.put(TYPE_CAT, 0);
 
     ByteBuffer tsBlock = null;
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error("get cateLogs error: {}", e.getMessage());
     } finally {
       close(rs, stmt);
     }
@@ -706,7 +789,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   public static ByteBuffer convertTsBlock(
@@ -718,17 +802,22 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         TSDataType columnType = tsDataTypeList.get(j);
         switch (columnType) {
           case TEXT:
+          case STRING:
+          case BLOB:
             tsBlockBuilder
                 .getColumnBuilder(j)
-                .writeBinary(new Binary(valuesInRow.get(j).toString()));
+                .writeBinary(
+                    new Binary(valuesInRow.get(j).toString(), TSFileConfig.STRING_CHARSET));
             break;
           case FLOAT:
             tsBlockBuilder.getColumnBuilder(j).writeFloat((float) valuesInRow.get(j));
             break;
           case INT32:
+          case DATE:
             tsBlockBuilder.getColumnBuilder(j).writeInt((int) valuesInRow.get(j));
             break;
           case INT64:
+          case TIMESTAMP:
             tsBlockBuilder.getColumnBuilder(j).writeLong((long) valuesInRow.get(j));
             break;
           case DOUBLE:
@@ -736,6 +825,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             break;
           case BOOLEAN:
             tsBlockBuilder.getColumnBuilder(j).writeBoolean((boolean) valuesInRow.get(j));
+            break;
+          default:
+            LOGGER.error("No data type was matched {}", columnType);
             break;
         }
       }
@@ -749,15 +841,23 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     }
   }
 
+  @SuppressWarnings(
+      "squid:S2095") // ignore Use try-with-resources or close this "Statement" in a "finally"
+  // clause
   @Override
   public ResultSet getClientInfoProperties() throws SQLException {
     Statement stmt = this.connection.createStatement();
-    ResultSet rs = stmt.executeQuery("SHOW DATABASES ");
-
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(SHOW_DATABASES_SQL);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
     Field[] fields = new Field[4];
     fields[0] = new Field("", "NAME", "TEXT");
-    fields[1] = new Field("", "MAX_LEN", "INT32");
-    fields[2] = new Field("", "DEFAULT_VALUE", "INT32");
+    fields[1] = new Field("", "MAX_LEN", INT32);
+    fields[2] = new Field("", "DEFAULT_VALUE", INT32);
     fields[3] = new Field("", "DESCRIPTION", "TEXT");
     List<TSDataType> tsDataTypeList =
         Arrays.asList(TSDataType.TEXT, TSDataType.INT32, TSDataType.INT32, TSDataType.TEXT);
@@ -779,7 +879,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error("convert tsBlock error when get client info properties: {}", e.getMessage());
     } finally {
       close(rs, stmt);
     }
@@ -796,9 +896,17 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
+  @SuppressWarnings({
+    "squid:S6541",
+    "squid:S3776",
+    "squid:S2095"
+  }) // ignore Cognitive Complexity of methods should not be too high
+  // ignore Methods should not perform too many tasks (aka Brain method)
+  // ignore Use try-with-resources or close this "Statement" in a "finally"
   @Override
   public ResultSet getColumnPrivileges(
       String catalog, String schemaPattern, String tableNamePattern, String columnNamePattern)
@@ -835,12 +943,18 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         && columnNamePattern.length() > 0) {
       sql = sql + "." + columnNamePattern;
     }
-    ResultSet rs = stmt.executeQuery(sql);
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(sql);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
     Field[] fields = new Field[8];
-    fields[0] = new Field("", "TABLE_CAT", "TEXT");
-    fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-    fields[2] = new Field("", "TABLE_NAME", "TEXT");
-    fields[3] = new Field("", "COLUMN_NAME", "TEXT");
+    fields[0] = new Field("", TABLE_CAT, "TEXT");
+    fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+    fields[2] = new Field("", TABLE_NAME, "TEXT");
+    fields[3] = new Field("", COLUMN_NAME, "TEXT");
     fields[4] = new Field("", "GRANTOR", "TEXT");
     fields[5] = new Field("", "GRANTEE", "TEXT");
     fields[6] = new Field("", "PRIVILEGE", "TEXT");
@@ -888,7 +1002,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error("convert tsBlock error when get column privileges: {}", e.getMessage());
     } finally {
       close(rs, stmt);
     }
@@ -905,7 +1019,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -923,27 +1038,27 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[14];
-      fields[0] = new Field("", "PKTABLE_CAT", "TEXT");
-      fields[1] = new Field("", "PKTABLE_SCHEM", "TEXT");
-      fields[2] = new Field("", "PKTABLE_NAME", "TEXT");
-      fields[3] = new Field("", "PKCOLUMN_NAME", "TEXT");
-      fields[4] = new Field("", "FKTABLE_CAT", "TEXT");
-      fields[5] = new Field("", "FKTABLE_SCHEM", "TEXT");
-      fields[6] = new Field("", "FKTABLE_NAME", "TEXT");
-      fields[7] = new Field("", "FKCOLUMN_NAME", "TEXT");
-      fields[8] = new Field("", "KEY_SEQ", "TEXT");
+      fields[0] = new Field("", PKTABLE_CAT, "TEXT");
+      fields[1] = new Field("", PKTABLE_SCHEM, "TEXT");
+      fields[2] = new Field("", PKTABLE_NAME, "TEXT");
+      fields[3] = new Field("", PKCOLUMN_NAME, "TEXT");
+      fields[4] = new Field("", FKTABLE_CAT, "TEXT");
+      fields[5] = new Field("", FKTABLE_SCHEM, "TEXT");
+      fields[6] = new Field("", FKTABLE_NAME, "TEXT");
+      fields[7] = new Field("", FKCOLUMN_NAME, "TEXT");
+      fields[8] = new Field("", KEY_SEQ, "TEXT");
       fields[9] = new Field("", "UPDATE_RULE ", "TEXT");
-      fields[10] = new Field("", "DELETE_RULE", "TEXT");
-      fields[11] = new Field("", "FK_NAME", "TEXT");
-      fields[12] = new Field("", "PK_NAME", "TEXT");
-      fields[13] = new Field("", "DEFERRABILITY", "TEXT");
+      fields[10] = new Field("", DELETE_RULE, "TEXT");
+      fields[11] = new Field("", FK_NAME, "TEXT");
+      fields[12] = new Field("", PK_NAME, "TEXT");
+      fields[13] = new Field("", DEFERRABILITY, "TEXT");
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
         columnTypeList.add(fields[i].getSqlType());
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get cross reference error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -960,37 +1075,38 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
   public int getDatabaseMajorVersion() {
-    int major_version = 0;
+    int majorVersion = 0;
     try {
       String version = client.getProperties().getVersion();
       String[] versions = version.split(".");
       if (versions.length >= 2) {
-        major_version = Integer.valueOf(versions[0]);
+        majorVersion = Integer.valueOf(versions[0]);
       }
     } catch (TException e) {
-      e.printStackTrace();
+      LOGGER.error("get database major version error: {}", e.getMessage());
     }
-    return major_version;
+    return majorVersion;
   }
 
   @Override
   public int getDatabaseMinorVersion() {
-    int minor_version = 0;
+    int minorVersion = 0;
     try {
       String version = client.getProperties().getVersion();
       String[] versions = version.split(".");
       if (versions.length >= 2) {
-        minor_version = Integer.valueOf(versions[1]);
+        minorVersion = Integer.valueOf(versions[1]);
       }
     } catch (TException e) {
-      e.printStackTrace();
+      LOGGER.error("get database minor version error: {}", e.getMessage());
     }
-    return minor_version;
+    return minorVersion;
   }
 
   @Override
@@ -1000,7 +1116,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
 
   @Override
   public String getDatabaseProductVersion() {
-    return DATABASE_VERSION;
+    return getDriverVersion();
   }
 
   @Override
@@ -1031,33 +1147,33 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
   @Override
   public ResultSet getExportedKeys(String catalog, String schema, final String table)
       throws SQLException {
-    List<String> columnNameList = new ArrayList<String>();
-    List<String> columnTypeList = new ArrayList<String>();
-    Map<String, Integer> columnNameIndex = new HashMap<String, Integer>();
+    List<String> columnNameList = new ArrayList<>();
+    List<String> columnTypeList = new ArrayList<>();
+    Map<String, Integer> columnNameIndex = new HashMap<>();
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[14];
-      fields[0] = new Field("", "PKTABLE_CAT", "TEXT");
-      fields[1] = new Field("", "PKTABLE_SCHEM", "INT32");
-      fields[2] = new Field("", "PKTABLE_NAME", "TEXT");
-      fields[3] = new Field("", "PKCOLUMN_NAME", "TEXT");
-      fields[4] = new Field("", "FKTABLE_CAT", "TEXT");
-      fields[5] = new Field("", "FKTABLE_SCHEM", "TEXT");
-      fields[6] = new Field("", "FKTABLE_NAME", "TEXT");
-      fields[7] = new Field("", "FKCOLUMN_NAME", "TEXT");
-      fields[8] = new Field("", "KEY_SEQ", "INT32");
-      fields[9] = new Field("", "UPDATE_RULE", "INT32");
-      fields[10] = new Field("", "DELETE_RULE", "INT32");
-      fields[11] = new Field("", "FK_NAME", "TEXT");
-      fields[12] = new Field("", "PK_NAME", "TEXT");
-      fields[13] = new Field("", "DEFERRABILITY", "INT32");
+      fields[0] = new Field("", PKTABLE_CAT, "TEXT");
+      fields[1] = new Field("", PKTABLE_SCHEM, INT32);
+      fields[2] = new Field("", PKTABLE_NAME, "TEXT");
+      fields[3] = new Field("", PKCOLUMN_NAME, "TEXT");
+      fields[4] = new Field("", FKTABLE_CAT, "TEXT");
+      fields[5] = new Field("", FKTABLE_SCHEM, "TEXT");
+      fields[6] = new Field("", FKTABLE_NAME, "TEXT");
+      fields[7] = new Field("", FKCOLUMN_NAME, "TEXT");
+      fields[8] = new Field("", KEY_SEQ, INT32);
+      fields[9] = new Field("", "UPDATE_RULE", INT32);
+      fields[10] = new Field("", DELETE_RULE, INT32);
+      fields[11] = new Field("", FK_NAME, "TEXT");
+      fields[12] = new Field("", PK_NAME, "TEXT");
+      fields[13] = new Field("", DEFERRABILITY, INT32);
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
         columnTypeList.add(fields[i].getSqlType());
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get exported keys error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1074,7 +1190,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1082,6 +1199,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     return "";
   }
 
+  @SuppressWarnings(
+      "squid:S2095") // ignore Use try-with-resources or close this "Statement" in a "finally"
+  // clause
   @Override
   public ResultSet getFunctionColumns(
       String catalog,
@@ -1090,25 +1210,31 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       java.lang.String columnNamePattern)
       throws SQLException {
     Statement stmt = connection.createStatement();
-    ResultSet rs = stmt.executeQuery("show functions");
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(SHOW_FUNCTIONS);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
     Field[] fields = new Field[17];
     fields[0] = new Field("", "FUNCTION_CAT ", "TEXT");
     fields[1] = new Field("", "FUNCTION_SCHEM", "TEXT");
     fields[2] = new Field("", "FUNCTION_NAME", "TEXT");
-    fields[3] = new Field("", "COLUMN_NAME", "TEXT");
-    fields[4] = new Field("", "COLUMN_TYPE", "INT32");
-    fields[5] = new Field("", "DATA_TYPE", "INT32");
-    fields[6] = new Field("", "TYPE_NAME", "TEXT");
-    fields[7] = new Field("", "PRECISION", "INT32");
-    fields[8] = new Field("", "LENGTH", "INT32");
-    fields[9] = new Field("", "SCALE", "INT32");
-    fields[10] = new Field("", "RADIX", "INT32");
-    fields[11] = new Field("", "NULLABLE", "INT32");
-    fields[12] = new Field("", "REMARKS", "TEXT");
-    fields[13] = new Field("", "CHAR_OCTET_LENGTH", "INT32");
-    fields[14] = new Field("", "ORDINAL_POSITION", "INT32");
-    fields[15] = new Field("", "IS_NULLABLE", "TEXT");
-    fields[16] = new Field("", "SPECIFIC_NAME", "TEXT");
+    fields[3] = new Field("", COLUMN_NAME, "TEXT");
+    fields[4] = new Field("", "COLUMN_TYPE", INT32);
+    fields[5] = new Field("", DATA_TYPE, INT32);
+    fields[6] = new Field("", TYPE_NAME, "TEXT");
+    fields[7] = new Field("", PRECISION, INT32);
+    fields[8] = new Field("", "LENGTH", INT32);
+    fields[9] = new Field("", "SCALE", INT32);
+    fields[10] = new Field("", "RADIX", INT32);
+    fields[11] = new Field("", NULLABLE, INT32);
+    fields[12] = new Field("", REMARKS, "TEXT");
+    fields[13] = new Field("", CHAR_OCTET_LENGTH, INT32);
+    fields[14] = new Field("", ORDINAL_POSITION, INT32);
+    fields[15] = new Field("", IS_NULLABLE, "TEXT");
+    fields[16] = new Field("", SPECIFIC_NAME, "TEXT");
     List<TSDataType> tsDataTypeList =
         Arrays.asList(
             TSDataType.TEXT,
@@ -1144,7 +1270,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       for (int i = 0; i < fields.length; i++) {
         if (i == 2) {
           valuesInRow.add(rs.getString(1));
-        } else if ("INT32".equals(fields[i].getSqlType())) {
+        } else if (INT32.equals(fields[i].getSqlType())) {
           valuesInRow.add(0);
         } else {
           valuesInRow.add("");
@@ -1157,7 +1283,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error("convert tsBlock error when get function columns: {}", e.getMessage());
     } finally {
       close(rs, stmt);
     }
@@ -1174,21 +1300,31 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
+  @SuppressWarnings(
+      "squid:S2095") // ignore Use try-with-resources or close this "Statement" in a "finally"
+  // clause
   @Override
   public ResultSet getFunctions(String catalog, String schemaPattern, String functionNamePattern)
       throws SQLException {
     Statement stmt = connection.createStatement();
-    ResultSet rs = stmt.executeQuery("show functions");
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(SHOW_FUNCTIONS);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
     Field[] fields = new Field[6];
     fields[0] = new Field("", "FUNCTION_CAT ", "TEXT");
     fields[1] = new Field("", "FUNCTION_SCHEM", "TEXT");
     fields[2] = new Field("", "FUNCTION_NAME", "TEXT");
-    fields[3] = new Field("", "REMARKS", "TEXT");
-    fields[4] = new Field("", "FUNCTION_TYPE", "INT32");
-    fields[5] = new Field("", "SPECIFIC_NAME", "TEXT");
+    fields[3] = new Field("", REMARKS, "TEXT");
+    fields[4] = new Field("", "FUNCTION_TYPE", INT32);
+    fields[5] = new Field("", SPECIFIC_NAME, "TEXT");
     List<TSDataType> tsDataTypeList =
         Arrays.asList(
             TSDataType.TEXT,
@@ -1226,7 +1362,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error("convert tsBlock error when get functions: {}", e.getMessage());
     } finally {
       close(rs, stmt);
     }
@@ -1243,7 +1379,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1253,33 +1390,33 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
 
   @Override
   public ResultSet getImportedKeys(String arg0, String arg1, String arg2) throws SQLException {
-    List<String> columnNameList = new ArrayList<String>();
-    List<String> columnTypeList = new ArrayList<String>();
-    Map<String, Integer> columnNameIndex = new HashMap<String, Integer>();
+    List<String> columnNameList = new ArrayList<>();
+    List<String> columnTypeList = new ArrayList<>();
+    Map<String, Integer> columnNameIndex = new HashMap<>();
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[14];
-      fields[0] = new Field("", "PKTABLE_CAT", "TEXT");
-      fields[1] = new Field("", "PKTABLE_SCHEM", "INT32");
-      fields[2] = new Field("", "PKTABLE_NAME", "TEXT");
-      fields[3] = new Field("", "PKCOLUMN_NAME", "TEXT");
-      fields[4] = new Field("", "FKTABLE_CAT", "TEXT");
-      fields[5] = new Field("", "FKTABLE_SCHEM", "TEXT");
-      fields[6] = new Field("", "FKTABLE_NAME", "TEXT");
-      fields[7] = new Field("", "FKCOLUMN_NAME", "TEXT");
-      fields[8] = new Field("", "KEY_SEQ", "INT32");
-      fields[9] = new Field("", "UPDATE_RULE", "INT32");
-      fields[10] = new Field("", "DELETE_RULE", "INT32");
-      fields[11] = new Field("", "FK_NAME", "TEXT");
-      fields[12] = new Field("", "PK_NAME", "TEXT");
-      fields[13] = new Field("", "DEFERRABILITY", "INT32");
+      fields[0] = new Field("", PKTABLE_CAT, "TEXT");
+      fields[1] = new Field("", PKTABLE_SCHEM, INT32);
+      fields[2] = new Field("", PKTABLE_NAME, "TEXT");
+      fields[3] = new Field("", PKCOLUMN_NAME, "TEXT");
+      fields[4] = new Field("", FKTABLE_CAT, "TEXT");
+      fields[5] = new Field("", FKTABLE_SCHEM, "TEXT");
+      fields[6] = new Field("", FKTABLE_NAME, "TEXT");
+      fields[7] = new Field("", FKCOLUMN_NAME, "TEXT");
+      fields[8] = new Field("", KEY_SEQ, INT32);
+      fields[9] = new Field("", "UPDATE_RULE", INT32);
+      fields[10] = new Field("", DELETE_RULE, INT32);
+      fields[11] = new Field("", FK_NAME, "TEXT");
+      fields[12] = new Field("", PK_NAME, "TEXT");
+      fields[13] = new Field("", DEFERRABILITY, INT32);
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
         columnTypeList.add(fields[i].getSqlType());
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get import keys error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1296,31 +1433,32 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
   public ResultSet getIndexInfo(String arg0, String arg1, String arg2, boolean arg3, boolean arg4)
       throws SQLException {
-    List<String> columnNameList = new ArrayList<String>();
-    List<String> columnTypeList = new ArrayList<String>();
-    Map<String, Integer> columnNameIndex = new HashMap<String, Integer>();
+    List<String> columnNameList = new ArrayList<>();
+    List<String> columnTypeList = new ArrayList<>();
+    Map<String, Integer> columnNameIndex = new HashMap<>();
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[14];
-      fields[0] = new Field("", "TABLE_CAT", "TEXT");
-      fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-      fields[2] = new Field("", "TABLE_NAME", "TEXT");
+      fields[0] = new Field("", TABLE_CAT, "TEXT");
+      fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+      fields[2] = new Field("", TABLE_NAME, "TEXT");
       fields[3] = new Field("", "NON_UNIQUE", "TEXT");
       fields[4] = new Field("", "INDEX_QUALIFIER", "TEXT");
       fields[5] = new Field("", "INDEX_NAME", "TEXT");
       fields[6] = new Field("", "TYPE", "TEXT");
-      fields[7] = new Field("", "ORDINAL_POSITION", "TEXT");
-      fields[8] = new Field("", "COLUMN_NAME", "TEXT");
+      fields[7] = new Field("", ORDINAL_POSITION, "TEXT");
+      fields[8] = new Field("", COLUMN_NAME, "TEXT");
       fields[9] = new Field("", "ASC_OR_DESC", "TEXT");
       fields[10] = new Field("", "CARDINALITY", "TEXT");
       fields[11] = new Field("", "PAGES", "TEXT");
-      fields[12] = new Field("", "PK_NAME", "TEXT");
+      fields[12] = new Field("", PK_NAME, "TEXT");
       fields[13] = new Field("", "FILTER_CONDITION", "TEXT");
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
@@ -1328,7 +1466,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get index info error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1345,7 +1483,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1362,6 +1501,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
   public int getMaxBinaryLiteralLength() {
     return Integer.MAX_VALUE;
   }
+
   /** Although there is no limit, it is not recommended */
   @Override
   public int getMaxCatalogNameLength() {
@@ -1372,6 +1512,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
   public int getMaxCharLiteralLength() {
     return Integer.MAX_VALUE;
   }
+
   /** Although there is no limit, it is not recommended */
   @Override
   public int getMaxColumnNameLength() {
@@ -1409,7 +1550,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       maxcount = client.getProperties().getMaxConcurrentClientNum();
     } catch (TException e) {
-      e.printStackTrace();
+      LOGGER.error("get max concurrentClientNUm error: {}", e.getMessage());
     }
     return maxcount;
   }
@@ -1428,11 +1569,13 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
   public int getMaxProcedureNameLength() {
     return 0;
   }
+
   /** maxrowsize unlimited */
   @Override
   public int getMaxRowSize() {
     return 2147483639;
   }
+
   /** Although there is no limit, it is not recommended */
   @Override
   public int getMaxSchemaNameLength() {
@@ -1444,7 +1587,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       return client.getProperties().getThriftMaxFrameSize();
     } catch (TException e) {
-      e.printStackTrace();
+      LOGGER.error("get max statement length error: {}", e.getMessage());
     }
     return 0;
   }
@@ -1453,16 +1596,19 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
   public int getMaxStatements() {
     return 0;
   }
+
   /** Although there is no limit, it is not recommended */
   @Override
   public int getMaxTableNameLength() {
     return 1024;
   }
+
   /** Although there is no limit, it is not recommended */
   @Override
   public int getMaxTablesInSelect() {
     return 1024;
   }
+
   /** Although there is no limit, it is not recommended */
   @Override
   public int getMaxUserNameLength() {
@@ -1477,7 +1623,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       statement = connection.createStatement();
       StringBuilder str = new StringBuilder("");
-      resultSet = statement.executeQuery("show functions");
+      resultSet = statement.executeQuery(SHOW_FUNCTIONS);
       List<String> listfunction = Arrays.asList("MAX_TIME", "MIN_TIME", "TIME_DIFFERENCE", "NOW");
       while (resultSet.next()) {
         if (listfunction.contains(resultSet.getString(1))) {
@@ -1490,7 +1636,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         result = result.substring(0, result.length() - 1);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get numeric functions error: {}", e.getMessage());
     } finally {
       close(resultSet, statement);
     }
@@ -1513,20 +1659,23 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             TSDataType.TEXT);
 
     String database = "";
-    if (catalog != null) database = catalog;
-    else if (schema != null) database = schema;
+    if (catalog != null) {
+      database = catalog;
+    } else if (schema != null) {
+      database = schema;
+    }
 
     Field[] fields = new Field[6];
-    fields[0] = new Field("", "TABLE_CAT", "TEXT");
-    fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-    fields[2] = new Field("", "TABLE_NAME", "TEXT");
-    fields[3] = new Field("", "COLUMN_NAME", "TEXT");
-    fields[4] = new Field("", "KEY_SEQ", "INT32");
-    fields[5] = new Field("", "PK_NAME", "TEXT");
+    fields[0] = new Field("", TABLE_CAT, "TEXT");
+    fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+    fields[2] = new Field("", TABLE_NAME, "TEXT");
+    fields[3] = new Field("", COLUMN_NAME, "TEXT");
+    fields[4] = new Field("", KEY_SEQ, INT32);
+    fields[5] = new Field("", PK_NAME, "TEXT");
 
-    List<Object> listValSub_1 = Arrays.asList(database, "", table, "time", 1, "PRIMARY");
-    List<Object> listValSub_2 = Arrays.asList(database, "", table, "deivce", 2, "PRIMARY");
-    List<List<Object>> valuesList = Arrays.asList(listValSub_1, listValSub_2);
+    List<Object> listValSub1 = Arrays.asList(database, "", table, "time", 1, PRIMARY);
+    List<Object> listValSub2 = Arrays.asList(database, "", table, "deivce", 2, PRIMARY);
+    List<List<Object>> valuesList = Arrays.asList(listValSub1, listValSub2);
     for (int i = 0; i < fields.length; i++) {
       columnNameList.add(fields[i].getName());
       columnTypeList.add(fields[i].getSqlType());
@@ -1537,7 +1686,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error("get primary keys error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1554,7 +1703,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1570,30 +1720,30 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       fields[0] = new Field("", "PROCEDURE_CAT", "TEXT");
       fields[1] = new Field("", "PROCEDURE_SCHEM", "TEXT");
       fields[2] = new Field("", "PROCEDURE_NAME", "TEXT");
-      fields[3] = new Field("", "COLUMN_NAME", "TEXT");
+      fields[3] = new Field("", COLUMN_NAME, "TEXT");
       fields[4] = new Field("", "COLUMN_TYPE", "TEXT");
-      fields[5] = new Field("", "DATA_TYPE", "INT32");
-      fields[6] = new Field("", "TYPE_NAME", "TEXT");
-      fields[7] = new Field("", "PRECISION", "TEXT");
+      fields[5] = new Field("", DATA_TYPE, INT32);
+      fields[6] = new Field("", TYPE_NAME, "TEXT");
+      fields[7] = new Field("", PRECISION, "TEXT");
       fields[8] = new Field("", "LENGTH", "TEXT");
       fields[9] = new Field("", "SCALE", "TEXT");
       fields[10] = new Field("", "RADIX", "TEXT");
-      fields[11] = new Field("", "NULLABLE", "TEXT");
-      fields[12] = new Field("", "REMARKS", "TEXT");
+      fields[11] = new Field("", NULLABLE, "TEXT");
+      fields[12] = new Field("", REMARKS, "TEXT");
       fields[13] = new Field("", "COLUMN_DEF", "TEXT");
-      fields[14] = new Field("", "SQL_DATA_TYPE", "INT32");
-      fields[15] = new Field("", "SQL_DATETIME_SUB", "TEXT");
-      fields[16] = new Field("", "CHAR_OCTET_LENGTH", "TEXT");
-      fields[17] = new Field("", "ORDINAL_POSITION", "TEXT");
-      fields[18] = new Field("", "IS_NULLABLE", "TEXT");
-      fields[19] = new Field("", "SPECIFIC_NAME", "TEXT");
+      fields[14] = new Field("", SQL_DATA_TYPE, INT32);
+      fields[15] = new Field("", SQL_DATETIME_SUB, "TEXT");
+      fields[16] = new Field("", CHAR_OCTET_LENGTH, "TEXT");
+      fields[17] = new Field("", ORDINAL_POSITION, "TEXT");
+      fields[18] = new Field("", IS_NULLABLE, "TEXT");
+      fields[19] = new Field("", SPECIFIC_NAME, "TEXT");
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
         columnTypeList.add(fields[i].getSqlType());
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get procedure columns error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1610,7 +1760,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1629,16 +1780,16 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       fields[0] = new Field("", "PROCEDURE_CAT", "TEXT");
       fields[1] = new Field("", "PROCEDURE_SCHEM", "TEXT");
       fields[2] = new Field("", "PROCEDURE_NAME", "TEXT");
-      fields[3] = new Field("", "REMARKS", "TEXT");
+      fields[3] = new Field("", REMARKS, "TEXT");
       fields[4] = new Field("", "PROCEDURE_TYPE", "TEXT");
-      fields[5] = new Field("", "SPECIFIC_NAME", "TEXT");
+      fields[5] = new Field("", SPECIFIC_NAME, "TEXT");
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
         columnTypeList.add(fields[i].getSqlType());
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get procedures error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1655,7 +1806,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1664,18 +1816,18 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       throws SQLException {
     Statement stmt = connection.createStatement();
     Field[] fields = new Field[12];
-    fields[0] = new Field("", "TABLE_CAT", "TEXT");
-    fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-    fields[2] = new Field("", "TABLE_NAME", "TEXT");
-    fields[3] = new Field("", "COLUMN_NAME", "TEXT");
-    fields[4] = new Field("", "DATA_TYPE", "INT32");
-    fields[5] = new Field("", "COLUMN_SIZE", "INT32");
-    fields[6] = new Field("", "DECIMAL_DIGITS", "INT32");
-    fields[7] = new Field("", "NUM_PREC_RADIX", "INT32");
+    fields[0] = new Field("", TABLE_CAT, "TEXT");
+    fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+    fields[2] = new Field("", TABLE_NAME, "TEXT");
+    fields[3] = new Field("", COLUMN_NAME, "TEXT");
+    fields[4] = new Field("", DATA_TYPE, INT32);
+    fields[5] = new Field("", COLUMN_SIZE, INT32);
+    fields[6] = new Field("", DECIMAL_DIGITS, INT32);
+    fields[7] = new Field("", NUM_PREC_RADIX, INT32);
     fields[8] = new Field("", "COLUMN_USAGE", "TEXT");
-    fields[9] = new Field("", "REMARKS", "TEXT");
-    fields[10] = new Field("", "CHAR_OCTET_LENGTH", "INT32");
-    fields[11] = new Field("", "IS_NULLABLE", "TEXT");
+    fields[9] = new Field("", REMARKS, "TEXT");
+    fields[10] = new Field("", CHAR_OCTET_LENGTH, INT32);
+    fields[11] = new Field("", IS_NULLABLE, "TEXT");
     List<TSDataType> tsDataTypeList =
         Arrays.asList(
             TSDataType.TEXT,
@@ -1708,7 +1860,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(Collections.singletonList(value), tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error(CONVERT_ERROR_MSG, e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1725,7 +1877,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1753,12 +1906,21 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     return "stroge group";
   }
 
+  @SuppressWarnings(
+      "squid:S2095") // ignore Use try-with-resources or close this "Statement" in a "finally"
+  // clause
   @Override
   public ResultSet getSchemas() throws SQLException {
     Statement stmt = this.connection.createStatement();
-    ResultSet rs = stmt.executeQuery("SHOW DATABASES ");
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(SHOW_DATABASES_SQL);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
     Field[] fields = new Field[2];
-    fields[0] = new Field("", "TABLE_SCHEM", "TEXT");
+    fields[0] = new Field("", TABLE_SCHEM, "TEXT");
     fields[1] = new Field("", "TABLE_CATALOG", "TEXT");
 
     List<TSDataType> tsDataTypeList = Arrays.asList(TSDataType.TEXT, TSDataType.TEXT);
@@ -1784,7 +1946,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error(CONVERT_ERROR_MSG, e.getMessage());
     } finally {
       close(rs, stmt);
     }
@@ -1801,7 +1963,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1824,13 +1987,13 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       throws SQLException {
     List<String> columnNameList = new ArrayList<>();
     List<String> columnTypeList = new ArrayList<>();
-    Map<String, Integer> columnNameIndex = new HashMap<String, Integer>();
+    Map<String, Integer> columnNameIndex = new HashMap<>();
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[4];
-      fields[0] = new Field("", "TABLE_CAT", "TEXT");
-      fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-      fields[2] = new Field("", "TABLE_NAME", "TEXT");
+      fields[0] = new Field("", TABLE_CAT, "TEXT");
+      fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+      fields[2] = new Field("", TABLE_NAME, "TEXT");
       fields[3] = new Field("", "SUPERTABLE_NAME", "TEXT");
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
@@ -1838,7 +2001,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get super tables error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1855,7 +2018,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1867,9 +2031,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[6];
-      fields[0] = new Field("", "TABLE_CAT", "TEXT");
-      fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-      fields[2] = new Field("", "TABLE_NAME", "TEXT");
+      fields[0] = new Field("", TABLE_CAT, "TEXT");
+      fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+      fields[2] = new Field("", TABLE_NAME, "TEXT");
       fields[3] = new Field("", "SUPERTYPE_CAT", "TEXT");
       fields[4] = new Field("", "SUPERTYPE_SCHEM", "TEXT");
       fields[5] = new Field("", "SUPERTYPE_NAME", "TEXT");
@@ -1879,7 +2043,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get super types error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -1896,7 +2060,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -1907,7 +2072,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       statement = connection.createStatement();
       StringBuilder str = new StringBuilder("");
-      resultSet = statement.executeQuery("show functions");
+      resultSet = statement.executeQuery(SHOW_FUNCTIONS);
       while (resultSet.next()) {
         str.append(resultSet.getString(1)).append(",");
       }
@@ -1916,13 +2081,20 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         result = result.substring(0, result.length() - 1);
       }
     } catch (Exception ex) {
-      ex.printStackTrace();
+      LOGGER.error("get system functions error: {}", ex.getMessage());
     } finally {
       close(resultSet, statement);
     }
     return result;
   }
 
+  @SuppressWarnings({
+    "squid:S6541",
+    "squid:S3776",
+    "squid:S2095"
+  }) // ignore Cognitive Complexity of methods should not be too high
+  // ignore Methods should not perform too many tasks (aka Brain method)
+  // ignore Use try-with-resources or close this "Statement" in a "finally" clause
   @Override
   public ResultSet getTablePrivileges(String catalog, String schemaPattern, String tableNamePattern)
       throws SQLException {
@@ -1949,13 +2121,18 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       }
       sql = sql + "." + tableNamePattern;
     }
-
-    ResultSet rs = stmt.executeQuery(sql);
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(sql);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
     Field[] fields = new Field[8];
-    fields[0] = new Field("", "TABLE_CAT", "TEXT");
-    fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-    fields[2] = new Field("", "TABLE_NAME", "TEXT");
-    fields[3] = new Field("", "COLUMN_NAME", "TEXT");
+    fields[0] = new Field("", TABLE_CAT, "TEXT");
+    fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+    fields[2] = new Field("", TABLE_NAME, "TEXT");
+    fields[3] = new Field("", COLUMN_NAME, "TEXT");
     fields[4] = new Field("", "GRANTOR", "TEXT");
     fields[5] = new Field("", "GRANTEE", "TEXT");
     fields[6] = new Field("", "PRIVILEGE", "TEXT");
@@ -2003,7 +2180,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error(CONVERT_ERROR_MSG, e.getMessage());
     } finally {
       close(rs, stmt);
     }
@@ -2020,7 +2197,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -2035,15 +2213,15 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
 
     tsDataTypeList.add(TSDataType.TEXT);
     value.add("table");
-    columnNameList.add("TABLE_TYPE");
+    columnNameList.add(TABLE_TYPE);
     columnTypeList.add("TEXT");
-    columnNameIndex.put("TABLE_TYPE", 0);
+    columnNameIndex.put(TABLE_TYPE, 0);
 
     ByteBuffer tsBlock = null;
     try {
       tsBlock = convertTsBlock(Collections.singletonList(value), tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error(CONVERT_ERROR_MSG, e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -2060,72 +2238,91 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
+  @SuppressWarnings({
+    "squid:S6541",
+    "squid:S3776",
+    "squid:S2095"
+  }) // ignore Cognitive Complexity of methods should not be too high
+  // ignore Methods should not perform too many tasks (aka Brain method)
+  // ignore Use try-with-resources or close this "Statement" in a "finally" clause
   @Override
   public ResultSet getColumns(
       String catalog, String schemaPattern, String tableNamePattern, String columnNamePattern)
       throws SQLException {
     Statement stmt = this.connection.createStatement();
 
+    if (this.connection.getCatalog().equals(catalog)) {
+      catalog = null;
+    }
+
     String sql = "SHOW TIMESERIES";
-    if (catalog != null && catalog.length() > 0) {
+    if (StringUtils.isNotEmpty(catalog)) {
       if (catalog.contains("%")) {
         catalog = catalog.replace("%", "*");
       }
       sql = sql + " " + catalog;
-    } else if (schemaPattern != null && schemaPattern.length() > 0) {
+    } else if (StringUtils.isNotEmpty(schemaPattern)) {
       if (schemaPattern.contains("%")) {
         schemaPattern = schemaPattern.replace("%", "*");
       }
       sql = sql + " " + schemaPattern;
     }
-    if (((catalog != null && catalog.length() > 0)
-            || schemaPattern != null && schemaPattern.length() > 0)
-        && tableNamePattern != null
-        && tableNamePattern.length() > 0) {
+    if ((StringUtils.isNotEmpty(catalog) || StringUtils.isNotEmpty(schemaPattern))
+        && StringUtils.isNotEmpty(tableNamePattern)) {
       if (tableNamePattern.contains("%")) {
         tableNamePattern = tableNamePattern.replace("%", "*");
       }
       sql = sql + "." + tableNamePattern;
     }
 
-    if (((catalog != null && catalog.length() > 0)
-            || schemaPattern != null && schemaPattern.length() > 0)
-        && tableNamePattern != null
-        && tableNamePattern.length() > 0
-        && columnNamePattern != null
-        && columnNamePattern.length() > 0) {
+    if ((StringUtils.isNotEmpty(catalog) || StringUtils.isNotEmpty(schemaPattern))
+        && StringUtils.isNotEmpty(tableNamePattern)
+        && StringUtils.isNotEmpty(columnNamePattern)) {
       if (columnNamePattern.contains("%")) {
         columnNamePattern = columnNamePattern.replace("%", "*");
       }
       sql = sql + "." + columnNamePattern;
     }
-    ResultSet rs = stmt.executeQuery(sql);
+
+    if (StringUtils.isEmpty(catalog)
+        && StringUtils.isEmpty(schemaPattern)
+        && StringUtils.isNotEmpty(tableNamePattern)) {
+      sql = sql + " " + tableNamePattern + ".*";
+    }
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(sql);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
     Field[] fields = new Field[24];
-    fields[0] = new Field("", "TABLE_CAT", "TEXT");
-    fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-    fields[2] = new Field("", "TABLE_NAME", "TEXT");
-    fields[3] = new Field("", "COLUMN_NAME", "TEXT");
-    fields[4] = new Field("", "DATA_TYPE", "INT32");
-    fields[5] = new Field("", "TYPE_NAME", "TEXT");
-    fields[6] = new Field("", "COLUMN_SIZE", "INT32");
-    fields[7] = new Field("", "BUFFER_LENGTH", "INT32");
-    fields[8] = new Field("", "DECIMAL_DIGITS", "INT32");
-    fields[9] = new Field("", "NUM_PREC_RADIX", "INT32");
-    fields[10] = new Field("", "NULLABLE", "INT32");
-    fields[11] = new Field("", "REMARKS", "TEXT");
+    fields[0] = new Field("", TABLE_CAT, "TEXT");
+    fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+    fields[2] = new Field("", TABLE_NAME, "TEXT");
+    fields[3] = new Field("", COLUMN_NAME, "TEXT");
+    fields[4] = new Field("", DATA_TYPE, INT32);
+    fields[5] = new Field("", TYPE_NAME, "TEXT");
+    fields[6] = new Field("", COLUMN_SIZE, INT32);
+    fields[7] = new Field("", BUFFER_LENGTH, INT32);
+    fields[8] = new Field("", DECIMAL_DIGITS, INT32);
+    fields[9] = new Field("", NUM_PREC_RADIX, INT32);
+    fields[10] = new Field("", NULLABLE, INT32);
+    fields[11] = new Field("", REMARKS, "TEXT");
     fields[12] = new Field("", "COLUMN_DEF", "TEXT");
-    fields[13] = new Field("", "SQL_DATA_TYPE", "INT32");
-    fields[14] = new Field("", "SQL_DATETIME_SUB", "INT32");
-    fields[15] = new Field("", "CHAR_OCTET_LENGTH", "INT32");
-    fields[16] = new Field("", "ORDINAL_POSITION", "INT32");
-    fields[17] = new Field("", "IS_NULLABLE", "TEXT");
+    fields[13] = new Field("", SQL_DATA_TYPE, INT32);
+    fields[14] = new Field("", SQL_DATETIME_SUB, INT32);
+    fields[15] = new Field("", CHAR_OCTET_LENGTH, INT32);
+    fields[16] = new Field("", ORDINAL_POSITION, INT32);
+    fields[17] = new Field("", IS_NULLABLE, "TEXT");
     fields[18] = new Field("", "SCOPE_CATALOG", "TEXT");
     fields[19] = new Field("", "SCOPE_SCHEMA", "TEXT");
     fields[20] = new Field("", "SCOPE_TABLE", "TEXT");
-    fields[21] = new Field("", "SOURCE_DATA_TYPE", "INT32");
+    fields[21] = new Field("", "SOURCE_DATA_TYPE", INT32);
     fields[22] = new Field("", "IS_AUTOINCREMENT", "TEXT");
     fields[23] = new Field("", "IS_GENERATEDCOLUMN", "TEXT");
 
@@ -2226,7 +2423,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error(CONVERT_ERROR_MSG, e.getMessage());
     } finally {
       close(rs, stmt);
     }
@@ -2243,7 +2440,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   private void close(ResultSet rs, Statement stmt) {
@@ -2266,14 +2464,14 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
 
   public int getTypeScale(String columnType) {
     switch (columnType.toUpperCase()) {
-      case "BOOLEAN":
-      case "INT32":
-      case "INT64":
+      case BOOLEAN:
+      case INT32:
+      case INT64:
       case "TEXT":
         return 0;
-      case "FLOAT":
+      case FLOAT:
         return 6;
-      case "DOUBLE":
+      case DOUBLE:
         return 15;
       default:
         break;
@@ -2283,15 +2481,15 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
 
   private int getSQLType(String columnType) {
     switch (columnType.toUpperCase()) {
-      case "BOOLEAN":
+      case BOOLEAN:
         return Types.BOOLEAN;
-      case "INT32":
+      case INT32:
         return Types.INTEGER;
-      case "INT64":
+      case INT64:
         return Types.BIGINT;
-      case "FLOAT":
+      case FLOAT:
         return Types.FLOAT;
-      case "DOUBLE":
+      case DOUBLE:
         return Types.DOUBLE;
       case "TEXT":
         return Types.LONGVARCHAR;
@@ -2304,15 +2502,15 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
   private int getTypePrecision(String columnType) {
     // BOOLEAN, INT32, INT64, FLOAT, DOUBLE, TEXT,
     switch (columnType.toUpperCase()) {
-      case "BOOLEAN":
+      case BOOLEAN:
         return 1;
-      case "INT32":
+      case INT32:
         return 10;
-      case "INT64":
+      case INT64:
         return 19;
-      case "FLOAT":
+      case FLOAT:
         return 38;
-      case "DOUBLE":
+      case DOUBLE:
         return 308;
       case "TEXT":
         return Integer.MAX_VALUE;
@@ -2322,13 +2520,20 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     return 0;
   }
 
+  @SuppressWarnings({
+    "squid:S6541",
+    "squid:S3776",
+    "squid:S2095"
+  }) // ignore Cognitive Complexity of methods should not be too high
+  // ignore Methods should not perform too many tasks (aka Brain method)
+  // ignore Use try-with-resources or close this "Statement" in a "finally" clause
   @Override
   public ResultSet getTables(
       String catalog, String schemaPattern, String tableNamePattern, String[] types)
       throws SQLException {
     Statement stmt = this.connection.createStatement();
 
-    String sql = "SHOW devices";
+    String sql = "SHOW DEVICES";
     String database = "";
     if (catalog != null && catalog.length() > 0) {
       if (catalog.contains("%")) {
@@ -2352,16 +2557,22 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
       }
       sql = sql + "." + tableNamePattern;
     }
-    ResultSet rs = stmt.executeQuery(sql);
+    ResultSet rs;
+    try {
+      rs = stmt.executeQuery(sql);
+    } catch (SQLException e) {
+      stmt.close();
+      throw e;
+    }
     Field[] fields = new Field[10];
-    fields[0] = new Field("", "TABLE_CAT", "TEXT");
-    fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-    fields[2] = new Field("", "TABLE_NAME", "TEXT");
-    fields[3] = new Field("", "TABLE_TYPE", "TEXT");
-    fields[4] = new Field("", "REMARKS", "TEXT");
-    fields[5] = new Field("", "TYPE_CAT", "TEXT");
+    fields[0] = new Field("", TABLE_CAT, "TEXT");
+    fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+    fields[2] = new Field("", TABLE_NAME, "TEXT");
+    fields[3] = new Field("", TABLE_TYPE, "TEXT");
+    fields[4] = new Field("", REMARKS, "TEXT");
+    fields[5] = new Field("", TYPE_CAT, "TEXT");
     fields[6] = new Field("", "TYPE_SCHEM", "TEXT");
-    fields[7] = new Field("", "TYPE_NAME", "TEXT");
+    fields[7] = new Field("", TYPE_NAME, "TEXT");
     fields[8] = new Field("", "SELF_REFERENCING_COL_NAME", "TEXT");
     fields[9] = new Field("", "REF_GENERATION", "TEXT");
 
@@ -2396,7 +2607,11 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         if (i < 2) {
           valueInRow.add("");
         } else if (i == 2) {
-          valueInRow.add(res.substring(database.length() + 1));
+          int beginIndex = database.length() + 1;
+          if (StringUtils.isEmpty(database)) {
+            beginIndex = 0;
+          }
+          valueInRow.add(res.substring(beginIndex));
         } else if (i == 3) {
           valueInRow.add("TABLE");
         } else {
@@ -2410,7 +2625,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error(CONVERT_ERROR_MSG, e.getMessage());
     }
     return new IoTDBJDBCResultSet(
         stmt,
@@ -2425,7 +2640,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -2437,24 +2653,24 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
   public ResultSet getTypeInfo() throws SQLException {
     Statement stmt = connection.createStatement();
     Field[] fields = new Field[18];
-    fields[0] = new Field("", "TYPE_NAME", "TEXT");
-    fields[1] = new Field("", "DATA_TYPE", "INT32");
-    fields[2] = new Field("", "PRECISION", "INT32");
+    fields[0] = new Field("", TYPE_NAME, "TEXT");
+    fields[1] = new Field("", DATA_TYPE, INT32);
+    fields[2] = new Field("", PRECISION, INT32);
     fields[3] = new Field("", "LITERAL_PREFIX", "TEXT");
     fields[4] = new Field("", "LITERAL_SUFFIX", "TEXT");
     fields[5] = new Field("", "CREATE_PARAMS", "TEXT");
-    fields[6] = new Field("", "NULLABLE", "INT32");
-    fields[7] = new Field("", "CASE_SENSITIVE", "BOOLEAN");
+    fields[6] = new Field("", NULLABLE, INT32);
+    fields[7] = new Field("", "CASE_SENSITIVE", BOOLEAN);
     fields[8] = new Field("", "SEARCHABLE", "TEXT");
-    fields[9] = new Field("", "UNSIGNED_ATTRIBUTE", "BOOLEAN");
-    fields[10] = new Field("", "FIXED_PREC_SCALE", "BOOLEAN");
-    fields[11] = new Field("", "AUTO_INCREMENT", "BOOLEAN");
+    fields[9] = new Field("", "UNSIGNED_ATTRIBUTE", BOOLEAN);
+    fields[10] = new Field("", "FIXED_PREC_SCALE", BOOLEAN);
+    fields[11] = new Field("", "AUTO_INCREMENT", BOOLEAN);
     fields[12] = new Field("", "LOCAL_TYPE_NAME", "TEXT");
-    fields[13] = new Field("", "MINIMUM_SCALE", "INT32");
-    fields[14] = new Field("", "MAXIMUM_SCALE", "INT32");
-    fields[15] = new Field("", "SQL_DATA_TYPE", "INT32");
-    fields[16] = new Field("", "SQL_DATETIME_SUB", "INT32");
-    fields[17] = new Field("", "NUM_PREC_RADIX", "INT32");
+    fields[13] = new Field("", "MINIMUM_SCALE", INT32);
+    fields[14] = new Field("", "MAXIMUM_SCALE", INT32);
+    fields[15] = new Field("", SQL_DATA_TYPE, INT32);
+    fields[16] = new Field("", SQL_DATETIME_SUB, INT32);
+    fields[17] = new Field("", NUM_PREC_RADIX, INT32);
     List<TSDataType> tsDataTypeList =
         Arrays.asList(
             TSDataType.TEXT,
@@ -2475,9 +2691,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             TSDataType.INT32,
             TSDataType.INT32,
             TSDataType.INT32);
-    List<Object> listValSub_1 =
+    List<Object> listValSub1 =
         Arrays.asList(
-            "INT32",
+            INT32,
             Types.INTEGER,
             10,
             "",
@@ -2495,9 +2711,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             0,
             0,
             10);
-    List<Object> listValSub_2 =
+    List<Object> listValSub2 =
         Arrays.asList(
-            "INT64",
+            INT64,
             Types.BIGINT,
             19,
             "",
@@ -2515,9 +2731,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             0,
             0,
             10);
-    List<Object> listValSub_3 =
+    List<Object> listValSub3 =
         Arrays.asList(
-            "BOOLEAN",
+            BOOLEAN,
             Types.BOOLEAN,
             1,
             "",
@@ -2535,9 +2751,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             0,
             0,
             10);
-    List<Object> listValSub_4 =
+    List<Object> listValSub4 =
         Arrays.asList(
-            "FLOAT",
+            FLOAT,
             Types.FLOAT,
             38,
             "",
@@ -2555,9 +2771,9 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             0,
             0,
             10);
-    List<Object> listValSub_5 =
+    List<Object> listValSub5 =
         Arrays.asList(
-            "DOUBLE",
+            DOUBLE,
             Types.DOUBLE,
             308,
             "",
@@ -2575,7 +2791,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             0,
             0,
             10);
-    List<Object> listValSub_6 =
+    List<Object> listValSub6 =
         Arrays.asList(
             "TEXT",
             Types.LONGVARCHAR,
@@ -2596,8 +2812,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
             0,
             10);
     List<List<Object>> valuesList =
-        Arrays.asList(
-            listValSub_1, listValSub_2, listValSub_3, listValSub_4, listValSub_5, listValSub_6);
+        Arrays.asList(listValSub1, listValSub2, listValSub3, listValSub4, listValSub5, listValSub6);
     List<String> columnNameList = new ArrayList<>();
     List<String> columnTypeList = new ArrayList<>();
     Map<String, Integer> columnNameIndex = new HashMap<>();
@@ -2611,7 +2826,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       tsBlock = convertTsBlock(valuesList, tsDataTypeList);
     } catch (IOException e) {
-      e.printStackTrace();
+      LOGGER.error(CONVERT_ERROR_MSG, e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -2628,25 +2843,26 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         Collections.singletonList(tsBlock),
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
   public ResultSet getUDTs(
       String catalog, String schemaPattern, String typeNamePattern, int[] types)
       throws SQLException {
-    List<String> columnNameList = new ArrayList<String>();
-    List<String> columnTypeList = new ArrayList<String>();
-    Map<String, Integer> columnNameIndex = new HashMap<String, Integer>();
+    List<String> columnNameList = new ArrayList<>();
+    List<String> columnTypeList = new ArrayList<>();
+    Map<String, Integer> columnNameIndex = new HashMap<>();
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[7];
-      fields[0] = new Field("", "TABLE_CAT", "TEXT");
-      fields[1] = new Field("", "TABLE_SCHEM", "TEXT");
-      fields[2] = new Field("", "TABLE_NAME", "TEXT");
+      fields[0] = new Field("", TABLE_CAT, "TEXT");
+      fields[1] = new Field("", TABLE_SCHEM, "TEXT");
+      fields[2] = new Field("", TABLE_NAME, "TEXT");
       fields[3] = new Field("", "CLASS_NAME", "TEXT");
-      fields[4] = new Field("", "DATA_TYPE", "INT32");
-      fields[5] = new Field("", "REMARKS", "TEXT");
+      fields[4] = new Field("", DATA_TYPE, INT32);
+      fields[5] = new Field("", REMARKS, "TEXT");
       fields[6] = new Field("", "BASE_TYPE", "TEXT");
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
@@ -2654,7 +2870,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get UDTS error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -2671,7 +2887,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -2688,27 +2905,27 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
   @Override
   public ResultSet getVersionColumns(String catalog, String schema, String table)
       throws SQLException {
-    List<String> columnNameList = new ArrayList<String>();
-    List<String> columnTypeList = new ArrayList<String>();
-    Map<String, Integer> columnNameIndex = new HashMap<String, Integer>();
+    List<String> columnNameList = new ArrayList<>();
+    List<String> columnTypeList = new ArrayList<>();
+    Map<String, Integer> columnNameIndex = new HashMap<>();
     Statement stmt = connection.createStatement();
     try {
       Field[] fields = new Field[8];
-      fields[0] = new Field("", "SCOPE", "INT32");
-      fields[1] = new Field("", "COLUMN_NAME", "TEXT");
-      fields[2] = new Field("", "DATA_TYPE", "INT32");
-      fields[3] = new Field("", "TYPE_NAME", "TEXT");
-      fields[4] = new Field("", "COLUMN_SIZE", "INT32");
-      fields[5] = new Field("", "BUFFER_LENGTH", "INT32");
-      fields[6] = new Field("", "DECIMAL_DIGITS", "INT32");
-      fields[7] = new Field("", "PSEUDO_COLUMN", "INT32");
+      fields[0] = new Field("", "SCOPE", INT32);
+      fields[1] = new Field("", COLUMN_NAME, "TEXT");
+      fields[2] = new Field("", DATA_TYPE, INT32);
+      fields[3] = new Field("", TYPE_NAME, "TEXT");
+      fields[4] = new Field("", COLUMN_SIZE, INT32);
+      fields[5] = new Field("", BUFFER_LENGTH, INT32);
+      fields[6] = new Field("", DECIMAL_DIGITS, INT32);
+      fields[7] = new Field("", "PSEUDO_COLUMN", INT32);
       for (int i = 0; i < fields.length; i++) {
         columnNameList.add(fields[i].getName());
         columnTypeList.add(fields[i].getSqlType());
         columnNameIndex.put(fields[i].getName(), i);
       }
     } catch (Exception e) {
-      e.printStackTrace();
+      LOGGER.error("get version columns error: {}", e.getMessage());
     } finally {
       close(null, stmt);
     }
@@ -2725,7 +2942,8 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         null,
         null,
         (long) 60 * 1000,
-        false);
+        false,
+        zoneId);
   }
 
   @Override
@@ -2743,7 +2961,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     try {
       return client.getProperties().isReadOnly;
     } catch (TException e) {
-      e.printStackTrace();
+      LOGGER.error("get is readOnly error: {}", e.getMessage());
     }
     throw new SQLException("Can not get the read-only mode");
   }
@@ -3070,18 +3288,12 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
 
   @Override
   public boolean supportsResultSetHoldability(int holdability) {
-    if (ResultSet.HOLD_CURSORS_OVER_COMMIT == holdability) {
-      return true;
-    }
-    return false;
+    return ResultSet.HOLD_CURSORS_OVER_COMMIT == holdability;
   }
 
   @Override
   public boolean supportsResultSetType(int type) throws SQLException {
-    if (ResultSet.FETCH_FORWARD == type || ResultSet.TYPE_FORWARD_ONLY == type) {
-      return true;
-    }
-    return false;
+    return ResultSet.FETCH_FORWARD == type || ResultSet.TYPE_FORWARD_ONLY == type;
   }
 
   @Override
@@ -3194,14 +3406,17 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
     return false;
   }
 
-  /** @deprecated recommend using getMetadataInJson() instead of toString() */
+  /**
+   * @deprecated recommend using getMetadataInJson() instead of toString()
+   */
+  @SuppressWarnings("squid:S1133") // ignore Deprecated code should be removed
   @Deprecated
   @Override
   public String toString() {
     try {
       return getMetadataInJsonFunc();
     } catch (IoTDBSQLException e) {
-      logger.error("Failed to fetch metadata in json because: ", e);
+      LOGGER.error("Failed to fetch metadata in json because: ", e);
     } catch (TException e) {
       boolean flag = connection.reconnect();
       this.client = connection.getClient();
@@ -3209,7 +3424,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
         try {
           return getMetadataInJsonFunc();
         } catch (TException e2) {
-          logger.error(
+          LOGGER.error(
               "Fail to get all timeseries "
                   + "info after reconnecting."
                   + " please check server status",
@@ -3218,7 +3433,7 @@ public class IoTDBDatabaseMetadata implements DatabaseMetaData {
           // ignored
         }
       } else {
-        logger.error(
+        LOGGER.error(
             "Fail to reconnect to server "
                 + "when getting all timeseries info. please check server status");
       }

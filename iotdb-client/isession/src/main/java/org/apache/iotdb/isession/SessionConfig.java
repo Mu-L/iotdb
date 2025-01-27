@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.isession;
 
 import org.apache.iotdb.isession.util.Version;
@@ -29,14 +30,12 @@ public class SessionConfig {
   public static final int DEFAULT_FETCH_SIZE = 5000;
   public static final int DEFAULT_CONNECTION_TIMEOUT_MS = 0;
   public static final boolean DEFAULT_REDIRECTION_MODE = true;
-
+  public static final boolean DEFAULT_RECORDS_AUTO_CONVERT_TABLET = true;
   public static final int CPU_CORES = Runtime.getRuntime().availableProcessors();
   public static final int DEFAULT_SESSION_EXECUTOR_THREAD_NUM = 2 * CPU_CORES;
   public static final int DEFAULT_SESSION_EXECUTOR_TASK_NUM = 1_000;
-
   public static final int RETRY_NUM = 3;
   public static final long RETRY_INTERVAL_MS = 1000;
-
   public static final long DEFAULT_QUERY_TIME_OUT = 60000;
 
   /** thrift init buffer size, 1KB by default */
@@ -48,4 +47,14 @@ public class SessionConfig {
   public static final int DEFAULT_SESSION_POOL_MAX_SIZE = 5;
 
   public static final Version DEFAULT_VERSION = Version.V_1_0;
+
+  public static final boolean DEFAULT_ENABLE_AUTO_FETCH = true;
+
+  public static final int MAX_RETRY_COUNT = 60;
+
+  public static final long RETRY_INTERVAL_IN_MS = 500;
+
+  public static final String SQL_DIALECT = "tree";
+
+  private SessionConfig() {}
 }

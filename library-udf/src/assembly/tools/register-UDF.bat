@@ -40,7 +40,6 @@ call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "creat
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function segment as 'org.apache.iotdb.library.dprofile.UDTFSegment'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function skew as 'org.apache.iotdb.library.dprofile.UDAFSkew'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function spread as 'org.apache.iotdb.library.dprofile.UDAFSpread'"
-call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function stddev as 'org.apache.iotdb.library.dprofile.UDAFStddev'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function minmax as 'org.apache.iotdb.library.dprofile.UDTFMinMax'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function zscore as 'org.apache.iotdb.library.dprofile.UDTFZScore'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function spline as 'org.apache.iotdb.library.dprofile.UDTFSpline'"
@@ -77,6 +76,7 @@ call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "creat
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function iqr as 'org.apache.iotdb.library.anomaly.UDTFIQR'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function twosidedfilter as 'org.apache.iotdb.library.anomaly.UDTFTwoSidedFilter'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function missdetect as 'org.apache.iotdb.library.anomaly.UDTFMissDetect'"
+call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function outlier as 'org.apache.iotdb.library.anomaly.UDTFOutlier'"
 
 
 @REM Frequency Domain
@@ -99,3 +99,9 @@ call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "creat
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function regexmatch as 'org.apache.iotdb.library.string.UDTFRegexMatch'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function strreplace as 'org.apache.iotdb.library.string.UDTFStrReplace'"
 call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function regexreplace as 'org.apache.iotdb.library.string.UDTFRegexReplace'"
+
+@REM Machine Learning
+call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function ar as 'org.apache.iotdb.library.dlearn.UDTFAR'"
+
+@REM Match
+call ../sbin/start-cli.bat -h %host% -p %rpcPort% -u %user% -pw %pass% -e "create function pattern_match as 'org.apache.iotdb.library.match.UDAFPatternMatch'"

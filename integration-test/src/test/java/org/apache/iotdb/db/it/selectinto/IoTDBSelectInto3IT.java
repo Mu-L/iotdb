@@ -41,9 +41,10 @@ public class IoTDBSelectInto3IT extends IoTDBSelectIntoIT {
         .getConfig()
         .getCommonConfig()
         .setSelectIntoInsertTabletPlanRowLimit(5)
-        .setQueryThreadCount(1);
+        .setQueryThreadCount(1)
+        .setWalBufferSize(1024 * 1024);
     EnvFactory.getEnv().initClusterEnvironment();
-    prepareData(SQLs);
+    prepareData(SELECT_INTO_SQL_LIST);
   }
 
   @AfterClass

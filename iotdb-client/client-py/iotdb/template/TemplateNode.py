@@ -15,14 +15,22 @@
 # specific language governing permissions and limitations
 # under the License.
 #
+import warnings
+
+warnings.simplefilter("always", DeprecationWarning)
 
 
 class TemplateNode(object):
     """
-    Template class, this class should be used to schema template node
+    Template class, this class should be used to device template node
     """
 
     def __init__(self, name):
+        warnings.warn(
+            "The APIs about template are deprecated and will be removed in future versions. Use sql instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         self.name = name
 
     def get_name(self):
@@ -31,11 +39,9 @@ class TemplateNode(object):
     def get_children(self):
         return None
 
-    def add_child(self, node):
-        ...
+    def add_child(self, node): ...
 
-    def delete_child(self, node):
-        ...
+    def delete_child(self, node): ...
 
     def is_measurement(self):
         return False
@@ -43,5 +49,4 @@ class TemplateNode(object):
     def is_share_time(self):
         return False
 
-    def serialize(self, *args, **kwargs):
-        ...
+    def serialize(self, *args, **kwargs): ...

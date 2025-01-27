@@ -23,8 +23,8 @@ import org.apache.iotdb.it.env.EnvFactory;
 import org.apache.iotdb.it.framework.IoTDBTestRunner;
 import org.apache.iotdb.itbase.category.ClusterIT;
 import org.apache.iotdb.itbase.category.LocalStandaloneIT;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
 
+import org.apache.tsfile.enums.TSDataType;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -33,11 +33,13 @@ import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 
 import java.sql.Connection;
+import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import static org.apache.iotdb.db.it.utils.TestUtils.assertTestFail;
 import static org.apache.iotdb.db.it.utils.TestUtils.executeNonQuery;
@@ -49,7 +51,7 @@ import static org.junit.Assert.fail;
 @Category({LocalStandaloneIT.class, ClusterIT.class})
 public class IoTDBSelectIntoIT {
 
-  protected static final List<String> SQLs =
+  public static final List<String> SELECT_INTO_SQL_LIST =
       new ArrayList<>(
           Arrays.asList(
               "CREATE DATABASE root.sg",
@@ -83,14 +85,28 @@ public class IoTDBSelectIntoIT {
               "flush",
               "CREATE DATABASE root.sg1",
               "CREATE TIMESERIES root.sg1.d1.s1 WITH DATATYPE=INT32, ENCODING=RLE",
-              "CREATE TIMESERIES root.sg1.d1.s2 WITH DATATYPE=FLOAT, ENCODING=RLE"));
+              "CREATE TIMESERIES root.sg1.d1.s2 WITH DATATYPE=FLOAT, ENCODING=RLE",
+              "create timeseries root.db.d1.s1 BOOLEAN encoding=PLAIN",
+              "create timeseries root.db.d1.s2 FLOAT encoding=RLE",
+              "create timeseries root.db.d1.s3 TEXT encoding=PLAIN",
+              "create timeseries root.db.d1.s4 INT32 encoding=PLAIN",
+              "create timeseries root.db.d1.s5 INT64 encoding=PLAIN",
+              "create timeseries root.db.d1.s6 DOUBLE encoding=PLAIN",
+              "create timeseries root.db.d1.s7 timestamp encoding=PLAIN",
+              "create timeseries root.db.d1.s8 string encoding=PLAIN",
+              "create timeseries root.db.d1.s9 blob encoding=PLAIN",
+              "create timeseries root.db.d1.s10 date encoding=PLAIN",
+              "CREATE ALIGNED TIMESERIES root.db.d2(s1 BOOLEAN encoding=PLAIN, s2 FLOAT encoding=RLE,s3 TEXT encoding=PLAIN,s4 INT32 encoding=PLAIN,s5 INT64 encoding=PLAIN,s6 DOUBLE encoding=PLAIN,s7 timestamp,s8 string,s9 blob,s10 date) ",
+              "insert into root.db.d1(time,s1,s2,s3,s4,s5,s6,s7,s8,s9,s10) values(1,true,1.1,'hello1',1,1,1.9,1997-01-01T08:00:00.001+08:00,'Hong Kong',X'486f6e67204b6f6e6720426c6f6221','1997-07-01')",
+              "insert into root.db.d1(time,s1,s2,s3,s4,s5,s6,s7,s8,s9,s10) values(3,false,1.3,'hello3',3,3,2.1,1997-01-03T08:00:00.001+08:00,'Hong Kong-3',X'486f6e67204b6f6e6720426c6f6224','1997-07-03')",
+              "insert into root.db.d1(time,s2) values(2,1.2)"));
 
   static {
-    SQLs.add("CREATE DATABASE root.sg_type");
+    SELECT_INTO_SQL_LIST.add("CREATE DATABASE root.sg_type");
     for (int deviceId = 0; deviceId < 6; deviceId++) {
       for (TSDataType dataType : TSDataType.values()) {
-        if (!dataType.equals(TSDataType.VECTOR)) {
-          SQLs.add(
+        if (!dataType.equals(TSDataType.VECTOR) && !dataType.equals(TSDataType.UNKNOWN)) {
+          SELECT_INTO_SQL_LIST.add(
               String.format(
                   "CREATE TIMESERIES root.sg_type.d_%d.s_%s %s",
                   deviceId, dataType.name().toLowerCase(), dataType));
@@ -98,10 +114,18 @@ public class IoTDBSelectIntoIT {
       }
     }
     for (int time = 0; time < 12; time++) {
-      SQLs.add(
+      SELECT_INTO_SQL_LIST.add(
           String.format(
-              "INSERT INTO root.sg_type.d_0(time, s_int32, s_int64, s_float, s_double, s_boolean, s_text) VALUES (%d, %d, %d, %f, %f, %s, 'text%d')",
-              time, time, time, (float) time, (double) time, time % 2 == 0, time));
+              Locale.ENGLISH,
+              "INSERT INTO root.sg_type.d_0(time, s_int32, s_int64, s_float, s_double, s_boolean, s_text) "
+                  + "VALUES (%d, %d, %d, %f, %f, %s, 'text%d')",
+              time,
+              time,
+              time,
+              (float) time,
+              (double) time,
+              time % 2 == 0,
+              time));
     }
   }
 
@@ -128,8 +152,11 @@ public class IoTDBSelectIntoIT {
   @BeforeClass
   public static void setUp() throws Exception {
     EnvFactory.getEnv().getConfig().getCommonConfig().setQueryThreadCount(1);
+    // if we don't change this configuration, we may get an error like: Cannot reserve XXXX bytes of
+    // direct buffer memory
+    EnvFactory.getEnv().getConfig().getCommonConfig().setWalBufferSize(1024 * 1024);
     EnvFactory.getEnv().initClusterEnvironment();
-    prepareData(SQLs);
+    prepareData(SELECT_INTO_SQL_LIST);
   }
 
   @AfterClass
@@ -306,6 +333,36 @@ public class IoTDBSelectIntoIT {
         };
     resultSetEqualTest(
         "select k1, k2, k3 from root.sg_expr.d;", expectedQueryHeader, queryRetArray);
+  }
+
+  @Test
+  public void testUsingUnMatchedAlignment() {
+    String[] intoRetArray =
+        new String[] {
+          "root.sg.d1.s1,root.sg_bk1.new_aligned_d.t1,10,",
+          "root.sg.d2.s1,root.sg_bk1.new_aligned_d.t2,7,",
+          "root.sg.d1.s2,root.sg_bk1.new_aligned_d.t3,9,",
+          "root.sg.d2.s2,root.sg_bk1.new_aligned_d.t4,8,",
+        };
+    executeNonQuery(
+        "CREATE ALIGNED TIMESERIES root.sg_bk1.new_aligned_d(t1 INT32, t2 INT32, t3 FLOAT, t4 FLOAT);");
+    // use matched interface (aligned == aligned)
+    resultSetEqualTest(
+        "select s1, s2 into aligned root.sg_bk1.new_aligned_d(t1, t2, t3, t4) from root.sg.*;",
+        selectIntoHeader,
+        intoRetArray);
+    String expectedQueryHeader =
+        "Time,root.sg_bk1.new_aligned_d.t1,root.sg_bk1.new_aligned_d.t3,root.sg_bk1.new_aligned_d.t2,root.sg_bk1.new_aligned_d.t4,";
+    resultSetEqualTest(
+        "select t1, t3, t2, t4 from root.sg_bk1.new_aligned_d;", expectedQueryHeader, rawDataSet);
+
+    // use unmatched interface (non-aligned != aligned)
+    resultSetEqualTest(
+        "select s1, s2 into root.sg_bk1.new_aligned_d(t1, t2, t3, t4) from root.sg.*;",
+        selectIntoHeader,
+        intoRetArray);
+    resultSetEqualTest(
+        "select t1, t3, t2, t4 from root.sg_bk1.new_aligned_d;", expectedQueryHeader, rawDataSet);
   }
 
   // -------------------------------------- ALIGN BY DEVICE -------------------------------------
@@ -513,34 +570,48 @@ public class IoTDBSelectIntoIT {
         queryRetArray);
   }
 
-  // -------------------------------------- CHECK EXCEPTION -------------------------------------
-
   @Test
-  public void testAlignmentInconsistent() {
-    executeNonQuery("CREATE ALIGNED TIMESERIES root.sg_error_bk2.new_d(t1 INT32, t2 INT32);");
-    assertTestFail(
-        "select s1, s2 into root.sg_error_bk2.new_d(t1, t2, t3, t4) from root.sg.*;",
-        "The specified alignment property of the target device (root.sg_error_bk2.new_d) conflicts with the actual (isAligned = true).");
+  public void testAliasAlignByDevice() {
+    String[] intoRetArray =
+        new String[] {
+          "root.sg.d1,s1,root.sg_abd_alias.d1.k1,10,",
+        };
+    resultSetEqualTest(
+        "select s1 as k1 " + "into root.sg_abd_alias.d1(::) from root.sg.d1 align by device;",
+        selectIntoAlignByDeviceHeader,
+        intoRetArray);
+
+    intoRetArray =
+        new String[] {
+          "k1,root.sg_abd_alias.d2.k1,10,",
+        };
+    resultSetEqualTest(
+        "select s1 as k1 " + "into root.sg_abd_alias.d2(::) from root.sg.d1;",
+        selectIntoHeader,
+        intoRetArray);
   }
+
+  // -------------------------------------- CHECK EXCEPTION -------------------------------------
 
   @Test
   public void testPermission1() throws SQLException {
     try (Connection adminCon = EnvFactory.getEnv().getConnection();
         Statement adminStmt = adminCon.createStatement()) {
       adminStmt.execute("CREATE USER tempuser1 'temppw1'");
-      adminStmt.execute("GRANT USER tempuser1 PRIVILEGES INSERT_TIMESERIES on root.sg_bk.**;");
+      adminStmt.execute("GRANT WRITE_DATA on root.sg_bk.** TO USER tempuser1;");
+      ResultSet resultSet;
 
       try (Connection userCon = EnvFactory.getEnv().getConnection("tempuser1", "temppw1");
           Statement userStmt = userCon.createStatement()) {
         userStmt.executeQuery(
             "select s1, s2 into root.sg_bk.new_d(t1, t2, t3, t4) from root.sg.*;");
-        fail("No exception!");
+        resultSet = userStmt.executeQuery("select * from root.sg_bk.new_d");
+        Assert.assertEquals(resultSet.next(), false);
       } catch (SQLException e) {
         Assert.assertTrue(
             e.getMessage(),
             e.getMessage()
-                .contains(
-                    "No permissions for this operation, please add privilege READ_TIMESERIES"));
+                .contains("No permissions for this operation, please add privilege READ_DATA"));
       }
     }
   }
@@ -550,7 +621,7 @@ public class IoTDBSelectIntoIT {
     try (Connection adminCon = EnvFactory.getEnv().getConnection();
         Statement adminStmt = adminCon.createStatement()) {
       adminStmt.execute("CREATE USER tempuser2 'temppw2'");
-      adminStmt.execute("GRANT USER tempuser2 PRIVILEGES READ_TIMESERIES on root.sg.**;");
+      adminStmt.execute("GRANT WRITE_DATA on root.sg.** TO USER tempuser2;");
 
       try (Connection userCon = EnvFactory.getEnv().getConnection("tempuser2", "temppw2");
           Statement userStmt = userCon.createStatement()) {
@@ -561,8 +632,7 @@ public class IoTDBSelectIntoIT {
         Assert.assertTrue(
             e.getMessage(),
             e.getMessage()
-                .contains(
-                    "No permissions for this operation, please add privilege INSERT_TIMESERIES"));
+                .contains("No permissions for this operation, please add privilege WRITE_DATA"));
       }
     }
   }
@@ -696,6 +766,92 @@ public class IoTDBSelectIntoIT {
         };
     resultSetEqualTest(
         "select d_1.s_int64, d_1.s_float, d_1.s_double, d_2.s_double, d_3.s_double from root.sg_type;",
+        expectedQueryHeader,
+        queryRetArray);
+  }
+
+  @Test
+  public void testNewDataType() {
+    String[] intoRetArray =
+        new String[] {
+          "root.db.d1.s7,root.db.d2.s7,2,",
+          "root.db.d1.s8,root.db.d2.s8,2,",
+          "root.db.d1.s9,root.db.d2.s9,2,",
+          "root.db.d1.s10,root.db.d2.s10,2,",
+        };
+
+    resultSetEqualTest(
+        "select s7 into root.db.d2(s7) from root.db.d1;",
+        selectIntoHeader,
+        new String[] {intoRetArray[0]});
+    resultSetEqualTest(
+        "select s8 into root.db.d2(s8) from root.db.d1;",
+        selectIntoHeader,
+        new String[] {intoRetArray[1]});
+    resultSetEqualTest(
+        "select s9 into root.db.d2(s9) from root.db.d1;",
+        selectIntoHeader,
+        new String[] {intoRetArray[2]});
+    resultSetEqualTest(
+        "select s10 into root.db.d2(s10) from root.db.d1;",
+        selectIntoHeader,
+        new String[] {intoRetArray[3]});
+
+    String[] resultSet =
+        new String[] {
+          "1,1997-01-01T00:00:00.001Z,Hong Kong,0x486f6e67204b6f6e6720426c6f6221,1997-07-01,",
+          "3,1997-01-03T00:00:00.001Z,Hong Kong-3,0x486f6e67204b6f6e6720426c6f6224,1997-07-03,",
+        };
+
+    String expectedQueryHeader = "Time,root.db.d2.s7,root.db.d2.s8,root.db.d2.s9,root.db.d2.s10,";
+    resultSetEqualTest("select s7,s8,s9,s10 from root.db.d2;", expectedQueryHeader, resultSet);
+  }
+
+  // -------------------------------------- OTHER TEST -------------------------------------
+  @Test
+  public void testRemoveBackQuote() {
+    String[] intoRetArray =
+        new String[] {
+          "count(root.sg.d1.s1),root.sg_agg1.d1.count_s1,1,",
+          "last_value(root.sg.d1.s2),root.sg_agg1.d1.last_value_s2,1,",
+          "count(root.sg.d2.s1),root.sg_agg1.d2.count_s1,1,",
+          "last_value(root.sg.d2.s2),root.sg_agg1.d2.last_value_s2,1,"
+        };
+    resultSetEqualTest(
+        "select count(d1.s1), last_value(d1.s2), count(d2.s1), last_value(d2.s2) "
+            + "into root.sg_agg1.`d1`(`count_s1`, last_value_s2), aligned root.sg_agg1.d2(count_s1, last_value_s2) "
+            + "from root.sg;",
+        selectIntoHeader,
+        intoRetArray);
+
+    String expectedQueryHeader =
+        "Time,root.sg_agg1.d1.count_s1,root.sg_agg1.d2.count_s1,root.sg_agg1.d1.last_value_s2,root.sg_agg1.d2.last_value_s2,";
+    String[] queryRetArray = new String[] {"0,10,7,12.0,11.0,"};
+    resultSetEqualTest(
+        "select count_s1, last_value_s2 from root.sg_agg1.d1, root.sg_agg1.d2;",
+        expectedQueryHeader,
+        queryRetArray);
+  }
+
+  @Test
+  public void testRemoveBackQuoteAlignByDevice() {
+    String[] intoRetArray =
+        new String[] {
+          "root.sg.d1,count(s1),root.sg_abd_agg1.d1.count_s1,1,",
+          "root.sg.d1,last_value(s2),root.sg_abd_agg1.d1.last_value_s2,1,"
+        };
+    resultSetEqualTest(
+        "select count(s1), last_value(s2) "
+            + "into root.sg_abd_agg1.`d1`(`count_s1`, last_value_s2) "
+            + "from root.sg.d1 align by device;",
+        selectIntoAlignByDeviceHeader,
+        intoRetArray);
+
+    String expectedQueryHeader =
+        "Time,root.sg_abd_agg1.d1.count_s1," + "root.sg_abd_agg1.d1.last_value_s2,";
+    String[] queryRetArray = new String[] {"0,10,12.0,"};
+    resultSetEqualTest(
+        "select count_s1, last_value_s2 from root.sg_abd_agg1.d1, root.sg_abd_agg1.d2;",
         expectedQueryHeader,
         queryRetArray);
   }

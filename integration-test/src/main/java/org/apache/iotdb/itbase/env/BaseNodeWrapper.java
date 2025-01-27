@@ -16,11 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.itbase.env;
 
 public interface BaseNodeWrapper {
 
-  void createDir();
+  void createNodeDir();
+
+  void createLogDir();
 
   void destroyDir();
 
@@ -28,13 +31,33 @@ public interface BaseNodeWrapper {
 
   void stop();
 
+  void stopForcibly();
+
+  boolean isAlive();
+
   String getIp();
 
   int getPort();
+
+  int getMetricPort();
 
   String getId();
 
   String getIpAndPortString();
 
-  void dumpJVMSnapshot(String testCaseName);
+  /**
+   * Perform jstack on the process corresponding to the wrapper, and use logger to output the
+   * results.
+   */
+  void executeJstack();
+
+  /**
+   * Perform jstack on the process corresponding to the wrapper, and output the results to a file in
+   * the log directory.
+   *
+   * @param testCaseName the name of test case
+   */
+  void executeJstack(final String testCaseName);
+
+  long getPid();
 }

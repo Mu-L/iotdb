@@ -15,27 +15,23 @@
 # specific language governing permissions and limitations
 # under the License.
 #
-
-from enum import Enum, unique
+from datetime import date
+from enum import unique, IntEnum
 import numpy as np
 
 
 @unique
-class TSDataType(Enum):
+class TSDataType(IntEnum):
     BOOLEAN = 0
     INT32 = 1
     INT64 = 2
     FLOAT = 3
     DOUBLE = 4
     TEXT = 5
-
-    # this method is implemented to avoid the issue reported by:
-    # https://bugs.python.org/issue30545
-    def __eq__(self, other) -> bool:
-        return self.value == other.value
-
-    def __hash__(self):
-        return self.value
+    TIMESTAMP = 8
+    DATE = 9
+    BLOB = 10
+    STRING = 11
 
     def np_dtype(self):
         return {
@@ -44,12 +40,16 @@ class TSDataType(Enum):
             TSDataType.DOUBLE: np.dtype(">f8"),
             TSDataType.INT32: np.dtype(">i4"),
             TSDataType.INT64: np.dtype(">i8"),
-            TSDataType.TEXT: np.dtype("str"),
+            TSDataType.TEXT: str,
+            TSDataType.TIMESTAMP: np.dtype(">i8"),
+            TSDataType.DATE: date,
+            TSDataType.BLOB: bytes,
+            TSDataType.STRING: str,
         }[self]
 
 
 @unique
-class TSEncoding(Enum):
+class TSEncoding(IntEnum):
     PLAIN = 0
     DICTIONARY = 1
     RLE = 2
@@ -60,22 +60,13 @@ class TSEncoding(Enum):
     REGULAR = 7
     GORILLA = 8
     ZIGZAG = 9
-    FREQ = 10
     CHIMP = 11
     SPRINTZ = 12
     RLBE = 13
 
-    # this method is implemented to avoid the issue reported by:
-    # https://bugs.python.org/issue30545
-    def __eq__(self, other) -> bool:
-        return self.value == other.value
-
-    def __hash__(self):
-        return self.value
-
 
 @unique
-class Compressor(Enum):
+class Compressor(IntEnum):
     UNCOMPRESSED = 0
     SNAPPY = 1
     GZIP = 2
@@ -86,11 +77,3 @@ class Compressor(Enum):
     LZ4 = 7
     ZSTD = 8
     LZMA2 = 9
-
-    # this method is implemented to avoid the issue reported by:
-    # https://bugs.python.org/issue30545
-    def __eq__(self, other) -> bool:
-        return self.value == other.value
-
-    def __hash__(self):
-        return self.value

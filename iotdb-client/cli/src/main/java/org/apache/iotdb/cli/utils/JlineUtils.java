@@ -36,11 +36,15 @@ import java.io.File;
 import java.io.IOException;
 import java.util.Objects;
 import java.util.Set;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class JlineUtils {
+
+  private JlineUtils() {}
 
   public static final Pattern SQL_KEYWORD_PATTERN = Pattern.compile("([A-Z_]+)");
   public static final Set<String> SQL_KEYWORDS =
@@ -50,11 +54,21 @@ public class JlineUtils {
           .filter(w -> SQL_KEYWORD_PATTERN.matcher(w).matches())
           .collect(Collectors.toSet());
 
-  public static LineReader getLineReader(String username, String host, String port)
+  public static LineReader getLineReader(CliContext ctx, String username, String host, String port)
       throws IOException {
+    Logger.getLogger("org.jline").setLevel(Level.OFF);
+
     // Defaulting to a dumb terminal when a supported terminal can not be correctly created
     // see https://github.com/jline/jline3/issues/291
-    Terminal terminal = TerminalBuilder.builder().dumb(true).build();
+    Terminal terminal;
+    // This check is needed as TerminalBuilder checks if "in" and "out" are set and takes a wrong
+    // turn, if they are.
+    if (ctx.getIn() == System.in && ctx.getOut() == System.out) {
+      terminal = TerminalBuilder.builder().dumb(true).build();
+    } else {
+      terminal = TerminalBuilder.builder().streams(ctx.getIn(), ctx.getOut()).dumb(true).build();
+    }
+
     if (terminal.getWidth() == 0 || terminal.getHeight() == 0) {
       // Hard coded terminal size when redirecting.
       terminal.setSize(new Size(120, 40));
@@ -67,21 +81,23 @@ public class JlineUtils {
     LineReaderBuilder builder = LineReaderBuilder.builder();
     builder.terminal(terminal);
 
-    // Handle the command history. By default, the number of commands will not exceed 500 and the
-    // size of the history fill will be less than 10 KB. See:
-    // org.jline.reader.impl.history#DefaultHistory
-    String historyFile = ".iotdb_history";
-    String historyFilePath =
-        System.getProperty("user.home")
-            + File.separator
-            + historyFile
-            + "-"
-            + host.hashCode()
-            + "-"
-            + port
-            + "-"
-            + username.hashCode();
-    builder.variable(LineReader.HISTORY_FILE, new File(historyFilePath));
+    if (!ctx.isDisableCliHistory()) {
+      // Handle the command history. By default, the number of commands will not exceed 500 and the
+      // size of the history fill will be less than 10 KB. See:
+      // org.jline.reader.impl.history#DefaultHistory
+      String historyFile = ".iotdb_history";
+      String historyFilePath =
+          System.getProperty("user.home")
+              + File.separator
+              + historyFile
+              + "-"
+              + host.hashCode()
+              + "-"
+              + port
+              + "-"
+              + username.hashCode();
+      builder.variable(LineReader.HISTORY_FILE, new File(historyFilePath));
+    }
 
     // TODO: since the lexer doesn't produce tokens for quotation marks, disable the highlighter to
     // avoid incorrect inputs.

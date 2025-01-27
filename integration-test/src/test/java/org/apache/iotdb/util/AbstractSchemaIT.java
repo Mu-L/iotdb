@@ -16,9 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.util;
 
-import org.apache.iotdb.db.mpp.common.header.ColumnHeaderConstant;
+import org.apache.iotdb.commons.schema.column.ColumnHeaderConstant;
 import org.apache.iotdb.it.env.EnvFactory;
 import org.apache.iotdb.it.framework.IoTDBTestRunnerWithParametersFactory;
 
@@ -36,11 +37,12 @@ import java.util.List;
 
 /**
  * This class define multiple modes for schema engine. All IT class extends AbstractSchemaIT will be
- * run in both Memory and Schema_File modes. In Schema_File mode, there are three kinds of test
- * environment: full memory, partial memory and non memory.
+ * run in both Memory and PBTree modes. In PBTree mode, there are three kinds of test environment:
+ * full memory, partial memory and non memory.
  *
  * <p>Notice that, all IT class extends AbstractSchemaIT need to call {@link
- * AbstractSchemaIT#setUpEnvironment} before test env initialization and call {@link
+ * AbstractSchemaIT#setUpEnvironment} before test env initialization at {@code @BeforeParam}, or
+ * call {@link AbstractSchemaIT#setUpEnvironmentBeforeMethod()} at {@code @Before}, and call {@link
  * AbstractSchemaIT#tearDownEnvironment} after test env cleaning.
  */
 @RunWith(Parameterized.class)
@@ -51,13 +53,13 @@ public abstract class AbstractSchemaIT {
   protected SchemaTestMode schemaTestMode;
 
   protected static final List<SchemaTestMode> schemaTestModes =
-      Arrays.asList(SchemaTestMode.Memory, SchemaTestMode.SchemaFile);
+      Arrays.asList(SchemaTestMode.Memory, SchemaTestMode.PBTree);
 
   private static int mode = 0;
 
   @Parameterized.Parameters(name = "SchemaEngineMode={0}")
   public static Iterable<SchemaTestMode> data() {
-    return Arrays.asList(SchemaTestMode.Memory, SchemaTestMode.SchemaFile);
+    return Arrays.asList(SchemaTestMode.Memory, SchemaTestMode.PBTree);
   }
 
   public AbstractSchemaIT(SchemaTestMode schemaTestMode) {
@@ -70,13 +72,20 @@ public abstract class AbstractSchemaIT {
   }
 
   protected static SchemaTestMode setUpEnvironment() throws Exception {
-    SchemaTestMode schemaTestMode = schemaTestModes.get(mode++);
+    return setUpEnvironmentInternal(schemaTestModes.get(mode++));
+  }
+
+  protected void setUpEnvironmentBeforeMethod() {
+    setUpEnvironmentInternal(schemaTestMode);
+  }
+
+  private static SchemaTestMode setUpEnvironmentInternal(final SchemaTestMode schemaTestMode) {
     switch (schemaTestMode) {
       case Memory:
         EnvFactory.getEnv().getConfig().getCommonConfig().setSchemaEngineMode("Memory");
         break;
-      case SchemaFile:
-        EnvFactory.getEnv().getConfig().getCommonConfig().setSchemaEngineMode("Schema_File");
+      case PBTree:
+        EnvFactory.getEnv().getConfig().getCommonConfig().setSchemaEngineMode("PBTree");
         allocateMemoryForSchemaRegion(4000);
         break;
     }
@@ -94,10 +103,18 @@ public abstract class AbstractSchemaIT {
         // If database is null, it will throw exception. Do nothing.
       }
       // delete all template
-      try (ResultSet resultSet = statement.executeQuery("SHOW SCHEMA TEMPLATES")) {
+      try (ResultSet resultSet = statement.executeQuery("SHOW DEVICE TEMPLATES")) {
         while (resultSet.next()) {
           statement.execute(
-              "DROP SCHEMA TEMPLATE " + resultSet.getString(ColumnHeaderConstant.TEMPLATE_NAME));
+              "DROP DEVICE TEMPLATE " + resultSet.getString(ColumnHeaderConstant.TEMPLATE_NAME));
+        }
+      }
+      // drop all users
+      try (ResultSet resultSet = statement.executeQuery("LIST USER")) {
+        while (resultSet.next()) {
+          if (!resultSet.getString(ColumnHeaderConstant.USER).equals("root")) {
+            statement.execute("DROP USER " + resultSet.getString(ColumnHeaderConstant.USER));
+          }
         }
       }
     }
@@ -120,8 +137,8 @@ public abstract class AbstractSchemaIT {
         .setSchemaMemoryAllocate(StringUtils.join(proportion, ':'));
   }
 
-  protected enum SchemaTestMode {
+  public enum SchemaTestMode {
     Memory,
-    SchemaFile
+    PBTree
   }
 }

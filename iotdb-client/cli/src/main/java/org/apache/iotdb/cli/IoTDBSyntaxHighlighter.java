@@ -65,10 +65,14 @@ public class IoTDBSyntaxHighlighter implements Highlighter {
   }
 
   @Override
-  public void setErrorPattern(Pattern errorPattern) {}
+  public void setErrorPattern(Pattern errorPattern) {
+    // This method is not needed.
+  }
 
   @Override
-  public void setErrorIndex(int errorIndex) {}
+  public void setErrorIndex(int errorIndex) {
+    // This method is not needed.
+  }
 
   private boolean isKeyword(String token) {
     return JlineUtils.SQL_KEYWORDS.contains(token.toUpperCase());

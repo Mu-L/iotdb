@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.apache.iotdb.rpc.RpcUtils;
@@ -23,6 +24,7 @@ import org.apache.iotdb.service.rpc.thrift.IClientRPCService.Iface;
 import org.apache.iotdb.service.rpc.thrift.TSFetchMetadataReq;
 import org.apache.iotdb.service.rpc.thrift.TSFetchMetadataResp;
 
+import org.apache.tsfile.common.conf.TSFileConfig;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -34,7 +36,7 @@ import java.sql.SQLException;
 import java.time.ZoneId;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 public class IoTDBStatementTest {
@@ -53,7 +55,7 @@ public class IoTDBStatementTest {
   public void setUp() throws Exception {
     MockitoAnnotations.initMocks(this);
     when(connection.getMetaData())
-        .thenReturn(new IoTDBDatabaseMetadata(connection, client, sessionId));
+        .thenReturn(new IoTDBDatabaseMetadata(connection, client, sessionId, zoneID));
     when(connection.isClosed()).thenReturn(false);
     when(client.fetchMetadata(any(TSFetchMetadataReq.class))).thenReturn(fetchMetadataResp);
     when(fetchMetadataResp.getStatus()).thenReturn(RpcUtils.SUCCESS_STATUS);
@@ -83,7 +85,9 @@ public class IoTDBStatementTest {
   @Test
   public void testSetFetchSize3() throws SQLException {
     final int fetchSize = 10000;
-    IoTDBStatement stmt = new IoTDBStatement(connection, client, sessionId, fetchSize, zoneID, 0);
+    IoTDBStatement stmt =
+        new IoTDBStatement(
+            connection, client, sessionId, fetchSize, zoneID, TSFileConfig.STRING_CHARSET, 0);
     assertEquals(fetchSize, stmt.getFetchSize());
   }
 
@@ -96,7 +100,8 @@ public class IoTDBStatementTest {
 
   @Test
   public void setTimeoutTest() throws SQLException {
-    IoTDBStatement statement = new IoTDBStatement(connection, client, sessionId, zoneID, 60);
+    IoTDBStatement statement =
+        new IoTDBStatement(connection, client, sessionId, zoneID, TSFileConfig.STRING_CHARSET, 60);
     Assert.assertEquals(60, statement.getQueryTimeout());
     statement.setQueryTimeout(100);
     Assert.assertEquals(100, statement.getQueryTimeout());

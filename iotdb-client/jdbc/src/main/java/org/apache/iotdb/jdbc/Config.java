@@ -16,24 +16,30 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.apache.iotdb.jdbc.Constant.Version;
 
 public class Config {
 
-  private Config() {}
+  private Config() {
+    // Empty constructor
+  }
 
   /** The required prefix for the connection URL. */
   public static final String IOTDB_URL_PREFIX = "jdbc:iotdb://";
 
+  public static final String IOTDB_HTTP_URL_PREFIX = "http://";
+
   public static final String IOTDB_ERROR_PREFIX = "Error";
 
   static final String IOTDB_DEFAULT_HOST = "localhost";
+
   /** If host is provided, without a port. */
   static final int IOTDB_DEFAULT_PORT = 6667;
 
-  /** tsfile's default series name. */
+  /** TsFile's default series name. */
   static final String DEFAULT_SERIES_NAME = "default";
 
   static final String AUTH_USER = "user";
@@ -55,15 +61,28 @@ public class Config {
 
   public static boolean rpcThriftCompressionEnable = false;
 
-  /** key of thrift default buffer size */
+  /** Key of thrift default buffer size. */
   public static final String DEFAULT_BUFFER_CAPACITY = "thrift_default_buffer_capacity";
 
-  /** key of thrift max frame size */
+  /** Key of thrift max frame size. */
   public static final String THRIFT_FRAME_MAX_SIZE = "thrift_max_frame_size";
 
-  /** key of underlying transport socketTimeout and connectionTimeout */
+  /** Key of underlying transport socketTimeout and connectionTimeout. */
   public static final String NETWORK_TIMEOUT = "network_timeout";
 
-  /** key of connection's time zone */
+  /** Key of connection's time zone. */
   public static final String TIME_ZONE = "time_zone";
+
+  /** Key of connection's charset. */
+  public static final String CHARSET = "charset";
+
+  public static final String USE_SSL = "use_ssl";
+
+  public static final String TRUST_STORE = "trust_store";
+
+  public static final String TRUST_STORE_PWD = "trust_store_pwd";
+
+  public static final String SQL_DIALECT = "sql_dialect";
+
+  public static final String DATABASE = "db";
 }

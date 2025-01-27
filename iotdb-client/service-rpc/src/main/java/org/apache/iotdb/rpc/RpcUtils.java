@@ -16,31 +16,41 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.rpc;
 
 import org.apache.iotdb.common.rpc.thrift.TEndPoint;
 import org.apache.iotdb.common.rpc.thrift.TSStatus;
-import org.apache.iotdb.protocol.influxdb.rpc.thrift.InfluxDBService;
-import org.apache.iotdb.protocol.influxdb.rpc.thrift.InfluxTSStatus;
 import org.apache.iotdb.service.rpc.thrift.IClientRPCService;
 import org.apache.iotdb.service.rpc.thrift.TSExecuteStatementResp;
 import org.apache.iotdb.service.rpc.thrift.TSFetchResultsResp;
+import org.apache.iotdb.service.rpc.thrift.TSOpenSessionResp;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.Proxy;
+import java.sql.Timestamp;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 public class RpcUtils {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(RpcUtils.class);
+
   /** How big should the default read and write buffers be? Defaults to 1KB */
   public static final int THRIFT_DEFAULT_BUF_CAPACITY = 1024;
+
   /**
    * It is used to prevent the size of the parsing package from being too large and allocating the
    * buffer will cause oom. Therefore, the maximum length of the requested memory is limited when
@@ -56,6 +66,14 @@ public class RpcUtils {
 
   public static final long MIN_SHRINK_INTERVAL = 60_000L;
 
+  public static final String TIME_PRECISION = "timestamp_precision";
+
+  public static final String MILLISECOND = "ms";
+
+  public static final String MICROSECOND = "us";
+
+  public static final String NANOSECOND = "ns";
+
   private RpcUtils() {
     // util class
   }
@@ -69,14 +87,6 @@ public class RpcUtils {
             RpcUtils.class.getClassLoader(),
             new Class[] {IClientRPCService.Iface.class},
             new SynchronizedHandler(client));
-  }
-
-  public static InfluxDBService.Iface newSynchronizedClient(InfluxDBService.Iface client) {
-    return (InfluxDBService.Iface)
-        Proxy.newProxyInstance(
-            RpcUtils.class.getClassLoader(),
-            new Class[] {InfluxDBService.Iface.class},
-            new InfluxDBSynchronizedHandler(client));
   }
 
   /**
@@ -97,25 +107,27 @@ public class RpcUtils {
     }
   }
 
-  /**
-   * verify success.
-   *
-   * @param status -status
-   */
-  public static void verifySuccess(InfluxTSStatus status) throws StatementExecutionException {
-    if (status.getCode() == TSStatusCode.REDIRECTION_RECOMMEND.getStatusCode()) {
-      return;
-    }
-    if (status.code != TSStatusCode.SUCCESS_STATUS.getStatusCode()) {
-      throw new StatementExecutionException(status);
-    }
-  }
-
   public static void verifySuccessWithRedirection(TSStatus status)
       throws StatementExecutionException, RedirectException {
     verifySuccess(status);
     if (status.isSetRedirectNode()) {
       throw new RedirectException(status.getRedirectNode());
+    }
+    if (status.isSetSubStatus()) { // the resp of insertRelationalTablet may set subStatus
+      List<TSStatus> statusSubStatus = status.getSubStatus();
+      List<TEndPoint> endPointList = new ArrayList<>(statusSubStatus.size());
+      int count = 0;
+      for (TSStatus subStatus : statusSubStatus) {
+        if (subStatus.isSetRedirectNode()) {
+          endPointList.add(subStatus.getRedirectNode());
+          count++;
+        } else {
+          endPointList.add(null);
+        }
+      }
+      if (!endPointList.isEmpty() && count != 0) {
+        throw new RedirectException(endPointList);
+      }
     }
   }
 
@@ -150,7 +162,10 @@ public class RpcUtils {
     }
   }
 
-  /** convert from TSStatusCode to TSStatus according to status code and status message */
+  /**
+   * Convert from {@link TSStatusCode} to {@link TSStatus} according to status code and status
+   * message
+   */
   public static TSStatus getStatus(TSStatusCode tsStatusCode) {
     return new TSStatus(tsStatusCode.getStatusCode());
   }
@@ -158,11 +173,26 @@ public class RpcUtils {
   public static TSStatus getStatus(List<TSStatus> statusList) {
     TSStatus status = new TSStatus(TSStatusCode.MULTIPLE_ERROR.getStatusCode());
     status.setSubStatus(statusList);
+    if (LOGGER.isDebugEnabled()) {
+      StringBuilder errMsg = new StringBuilder().append("Multiple error occur, messages: ");
+      Set<TSStatus> msgSet = new HashSet<>();
+      for (TSStatus subStatus : statusList) {
+        if (subStatus.getCode() != TSStatusCode.SUCCESS_STATUS.getStatusCode()
+            && subStatus.getCode() != TSStatusCode.REDIRECTION_RECOMMEND.getStatusCode()) {
+          if (!msgSet.contains(status)) {
+            errMsg.append(status).append("; ");
+            msgSet.add(status);
+          }
+        }
+      }
+      LOGGER.debug(errMsg.toString(), new Exception(errMsg.toString()));
+    }
     return status;
   }
 
   /**
-   * convert from TSStatusCode to TSStatus, which has message appending with existed status message
+   * Convert from {@link TSStatusCode} to {@link TSStatus}, which has message appended with existing
+   * status message
    *
    * @param tsStatusCode status type
    * @param message appending message
@@ -175,16 +205,6 @@ public class RpcUtils {
 
   public static TSStatus getStatus(int code, String message) {
     TSStatus status = new TSStatus(code);
-    status.setMessage(message);
-    return status;
-  }
-
-  public static InfluxTSStatus getInfluxDBStatus(TSStatusCode tsStatusCode) {
-    return new InfluxTSStatus(tsStatusCode.getStatusCode());
-  }
-
-  public static InfluxTSStatus getInfluxDBStatus(int code, String message) {
-    InfluxTSStatus status = new InfluxTSStatus(code);
     status.setMessage(message);
     return status;
   }
@@ -280,9 +300,16 @@ public class RpcUtils {
   @SuppressWarnings("squid:S3776") // Suppress high Cognitive Complexity warning
   public static String parseLongToDateWithPrecision(
       DateTimeFormatter formatter, long timestamp, ZoneId zoneid, String timestampPrecision) {
-    if ("ms".equals(timestampPrecision)) {
-      long integerOfDate = timestamp / 1000;
-      StringBuilder digits = new StringBuilder(Long.toString(timestamp % 1000));
+    long integerOfDate;
+    StringBuilder digits;
+    if (MILLISECOND.equals(timestampPrecision)) {
+      if (timestamp > 0 || timestamp % 1000 == 0) {
+        integerOfDate = timestamp / 1000;
+        digits = new StringBuilder(Long.toString(timestamp % 1000));
+      } else {
+        integerOfDate = timestamp / 1000 - 1;
+        digits = new StringBuilder(Long.toString(1000 + timestamp % 1000));
+      }
       ZonedDateTime dateTime =
           ZonedDateTime.ofInstant(Instant.ofEpochSecond(integerOfDate), zoneid);
       String datetime = dateTime.format(formatter);
@@ -293,9 +320,14 @@ public class RpcUtils {
         }
       }
       return formatDatetimeStr(datetime, digits);
-    } else if ("us".equals(timestampPrecision)) {
-      long integerOfDate = timestamp / 1000_000;
-      StringBuilder digits = new StringBuilder(Long.toString(timestamp % 1000_000));
+    } else if (MICROSECOND.equals(timestampPrecision)) {
+      if (timestamp > 0 || timestamp % 1000_000 == 0) {
+        integerOfDate = timestamp / 1000_000;
+        digits = new StringBuilder(Long.toString(timestamp % 1000_000));
+      } else {
+        integerOfDate = timestamp / 1000_000 - 1;
+        digits = new StringBuilder(Long.toString(1000_000 + timestamp % 1000_000));
+      }
       ZonedDateTime dateTime =
           ZonedDateTime.ofInstant(Instant.ofEpochSecond(integerOfDate), zoneid);
       String datetime = dateTime.format(formatter);
@@ -307,8 +339,13 @@ public class RpcUtils {
       }
       return formatDatetimeStr(datetime, digits);
     } else {
-      long integerOfDate = timestamp / 1000_000_000L;
-      StringBuilder digits = new StringBuilder(Long.toString(timestamp % 1000_000_000L));
+      if (timestamp > 0 || timestamp % 1000_000_000L == 0) {
+        integerOfDate = timestamp / 1000_000_000L;
+        digits = new StringBuilder(Long.toString(timestamp % 1000_000_000L));
+      } else {
+        integerOfDate = timestamp / 1000_000_000L - 1;
+        digits = new StringBuilder(Long.toString(1000_000_000L + timestamp % 1000_000_000L));
+      }
       ZonedDateTime dateTime =
           ZonedDateTime.ofInstant(Instant.ofEpochSecond(integerOfDate), zoneid);
       String datetime = dateTime.format(formatter);
@@ -331,5 +368,55 @@ public class RpcUtils {
         ? new TSStatus(TSStatusCode.SUCCESS_STATUS.getStatusCode())
         : new TSStatus(TSStatusCode.EXECUTE_STATEMENT_ERROR.getStatusCode())
             .setMessage(failedStatus.toString());
+  }
+
+  public static boolean isUseDatabase(String sql) {
+    return sql.length() > 4 && "use ".equalsIgnoreCase(sql.substring(0, 4));
+  }
+
+  public static long getMilliSecond(long time, int timeFactor) {
+    return time / timeFactor * 1_000;
+  }
+
+  public static int getNanoSecond(long time, int timeFactor) {
+    return (int) (time % timeFactor * (1_000_000_000 / timeFactor));
+  }
+
+  public static Timestamp convertToTimestamp(long time, int timeFactor) {
+    Timestamp res = new Timestamp(getMilliSecond(time, timeFactor));
+    res.setNanos(getNanoSecond(time, timeFactor));
+    return res;
+  }
+
+  public static int getTimeFactor(TSOpenSessionResp openResp) {
+    if (openResp.isSetConfiguration()) {
+      String precision = openResp.getConfiguration().get(TIME_PRECISION);
+      if (precision != null) {
+        switch (precision) {
+          case MILLISECOND:
+            return 1_000;
+          case MICROSECOND:
+            return 1_000_000;
+          case NANOSECOND:
+            return 1_000_000_000;
+          default:
+            throw new IllegalArgumentException("Unknown time precision: " + precision);
+        }
+      }
+    }
+    return 1_000;
+  }
+
+  public static String getTimePrecision(int timeFactor) {
+    switch (timeFactor) {
+      case 1_000:
+        return MILLISECOND;
+      case 1_000_000:
+        return MICROSECOND;
+      case 1_000_000_000:
+        return NANOSECOND;
+      default:
+        throw new IllegalArgumentException("Unknown time factor: " + timeFactor);
+    }
   }
 }

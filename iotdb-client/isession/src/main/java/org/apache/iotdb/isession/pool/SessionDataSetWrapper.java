@@ -16,13 +16,15 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.isession.pool;
 
 import org.apache.iotdb.isession.ISession;
 import org.apache.iotdb.isession.SessionDataSet;
 import org.apache.iotdb.rpc.IoTDBConnectionException;
 import org.apache.iotdb.rpc.StatementExecutionException;
-import org.apache.iotdb.tsfile.read.common.RowRecord;
+
+import org.apache.tsfile.read.common.RowRecord;
 
 import java.util.List;
 
@@ -65,6 +67,7 @@ public class SessionDataSetWrapper implements AutoCloseable {
     }
     return next;
   }
+
   /**
    * If there is an Exception, and you do not want to use the resultset anymore, you have to release
    * the resultset manually by calling closeResultSet

@@ -27,6 +27,7 @@ import org.apache.iotdb.udf.api.customizer.config.UDTFConfigurations;
 import org.apache.iotdb.udf.api.customizer.parameter.UDFParameterValidator;
 import org.apache.iotdb.udf.api.customizer.parameter.UDFParameters;
 import org.apache.iotdb.udf.api.customizer.strategy.SlidingSizeWindowAccessStrategy;
+import org.apache.iotdb.udf.api.exception.UDFException;
 import org.apache.iotdb.udf.api.type.Type;
 
 /**
@@ -80,11 +81,19 @@ public class UDTFTwoSidedFilter implements UDTF {
           collector.putLong(time[i], Math.round(repaired[i]));
         }
         break;
+      case BOOLEAN:
+      case BLOB:
+      case STRING:
+      case TEXT:
+      case TIMESTAMP:
+      case DATE:
       default:
-        throw new Exception("No such kind of data type.");
+        throw new UDFException("No such kind of data type.");
     }
   }
 
   @Override
-  public void terminate(PointCollector collector) throws Exception {}
+  public void terminate(PointCollector collector)
+      throws Exception { // default implementation ignored
+  }
 }

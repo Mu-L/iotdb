@@ -21,8 +21,8 @@ package org.apache.iotdb.db.trigger.example;
 
 import org.apache.iotdb.trigger.api.Trigger;
 import org.apache.iotdb.trigger.api.TriggerAttributes;
-import org.apache.iotdb.tsfile.write.record.Tablet;
 
+import org.apache.tsfile.write.record.Tablet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -86,7 +86,7 @@ public class TriggerFireTimesCounter implements Trigger {
           Thread.sleep(100);
         }
       }
-      int rows = tablet.rowSize;
+      int rows = tablet.getRowSize();
       if (fileLock != null && fileLock.isValid()) {
         String records = System.lineSeparator() + rows;
         ByteBuffer byteBuffer = ByteBuffer.allocate(1024);

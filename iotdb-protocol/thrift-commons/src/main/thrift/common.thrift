@@ -33,6 +33,7 @@ struct TSStatus {
   2: optional string message
   3: optional list<TSStatus> subStatus
   4: optional TEndPoint redirectNode
+  5: optional bool needRetry
 }
 
 enum TConsensusGroupType {
@@ -84,8 +85,18 @@ struct TDataNodeLocation {
   6: required TEndPoint schemaRegionConsensusEndPoint
 }
 
+struct TAINodeLocation{
+  1: required i32 aiNodeId
+  2: required TEndPoint internalEndPoint
+}
+
 struct TDataNodeConfiguration {
   1: required TDataNodeLocation location
+  2: required TNodeResource resource
+}
+
+struct TAINodeConfiguration{
+  1: required TAINodeLocation location
   2: required TNodeResource resource
 }
 
@@ -94,7 +105,15 @@ enum TRegionMigrateFailedType {
   RemovePeerFailed,
   RemoveConsensusGroupFailed,
   DeleteRegionFailed,
-  CreateRegionFailed
+  CreateRegionFailed,
+  Disconnect,
+}
+
+enum TRegionMaintainTaskStatus {
+  TASK_NOT_EXIST,
+  PROCESSING,
+  SUCCESS,
+  FAIL,
 }
 
 struct TFlushReq {
@@ -112,9 +131,20 @@ struct TSchemaNode {
   2: required byte nodeType
 }
 
+struct TSetConfigurationReq {
+  1: required map<string,string> configs
+  2: required i32 nodeId
+}
+
+// for TTL
 struct TSetTTLReq {
-  1: required list<string> storageGroupPathPattern
+  1: required list<string> pathPattern
   2: required i64 TTL
+  3: required bool isDataBase
+}
+
+struct TShowTTLReq {
+  1: required list<string> pathPattern
 }
 
 // for File
@@ -165,6 +195,63 @@ struct TSetThrottleQuotaReq {
   2: required TThrottleQuota throttleQuota
 }
 
+struct TLicense {
+    1: required i64 licenseIssueTimestamp
+    2: required i64 expireTimestamp
+    4: required i16 dataNodeNumLimit
+    5: required i32 cpuCoreNumLimit
+    6: required i64 deviceNumLimit
+    7: required i64 sensorNumLimit
+    8: required i64 disconnectionFromActiveNodeTimeLimit
+    9: required i16 mlNodeNumLimit
+}
+
+struct TLoadSample {
+  // Percentage of occupied cpu in Node
+  1: required double cpuUsageRate
+  // Percentage of occupied memory space in Node
+  2: required double memoryUsageRate
+  // Percentage of occupied disk space in Node
+  3: required double diskUsageRate
+  // The size of free disk space
+  // Unit: Byte
+  4: required double freeDiskSpace
+}
+
+enum TServiceType {
+  ConfigNodeInternalService,
+  DataNodeInternalService,
+  DataNodeMPPService,
+  DataNodeExternalService,
+}
+
+struct TServiceProvider {
+  1: required TEndPoint endPoint
+  2: required TServiceType serviceType
+}
+
+struct TSender {
+  1: optional TDataNodeLocation dataNodeLocation
+  2: optional TConfigNodeLocation configNodeLocation
+}
+
+struct TTestConnectionResult {
+  1: required TServiceProvider serviceProvider
+  2: required TSender sender
+  3: required bool success
+  4: optional string reason
+}
+
+struct TTestConnectionResp {
+  1: required TSStatus status
+  2: required list<TTestConnectionResult> resultList
+}
+
+struct TNodeLocations {
+  1: optional list<TConfigNodeLocation> configNodeLocations
+  2: optional list<TDataNodeLocation> dataNodeLocations
+}
+
 enum TAggregationType {
   COUNT,
   AVG,
@@ -178,10 +265,37 @@ enum TAggregationType {
   EXTREME,
   COUNT_IF,
   TIME_DURATION,
-  MODE
+  MODE,
+  COUNT_TIME,
+  STDDEV,
+  STDDEV_POP,
+  STDDEV_SAMP,
+  VARIANCE,
+  VAR_POP,
+  VAR_SAMP,
+  MAX_BY,
+  MIN_BY,
+  UDAF,
+  FIRST,
+  LAST,
+  FIRST_BY,
+  LAST_BY,
+  MIN,
+  MAX,
+  COUNT_ALL
 }
 
-// for MLNode
+struct TShowConfigurationTemplateResp {
+  1: required TSStatus status
+  2: required string content
+}
+
+struct TShowConfigurationResp {
+  1: required TSStatus status
+  2: required string content
+}
+
+// for AINode
 enum TrainingState {
   PENDING,
   RUNNING,
@@ -190,6 +304,14 @@ enum TrainingState {
   DROPPING
 }
 
-enum ModelTask {
-  FORECAST
+enum Model{
+  TREE=0,
+  TABLE=1
+}
+
+enum FunctionType{
+  NONE=0,
+  SCALAR=1,
+  AGGREGATE=2,
+  TABLE=3
 }

@@ -38,8 +38,8 @@ import org.apache.iotdb.confignode.rpc.thrift.TShowDataNodesResp;
 import org.apache.iotdb.confignode.rpc.thrift.TShowVariablesResp;
 import org.apache.iotdb.consensus.ConsensusFactory;
 import org.apache.iotdb.it.env.EnvFactory;
-import org.apache.iotdb.it.env.cluster.ConfigNodeWrapper;
-import org.apache.iotdb.it.env.cluster.DataNodeWrapper;
+import org.apache.iotdb.it.env.cluster.node.ConfigNodeWrapper;
+import org.apache.iotdb.it.env.cluster.node.DataNodeWrapper;
 import org.apache.iotdb.it.framework.IoTDBTestRunner;
 import org.apache.iotdb.itbase.category.ClusterIT;
 import org.apache.iotdb.rpc.TSStatusCode;
@@ -151,7 +151,6 @@ public class IoTDBClusterNodeGetterIT {
       Assert.assertEquals(
           expectedParameters.getSeriesPartitionExecutorClass(),
           clusterParameters.getSeriesPartitionExecutorClass());
-      Assert.assertEquals(expectedParameters.getDefaultTTL(), clusterParameters.getDefaultTTL());
       Assert.assertEquals(
           expectedParameters.getTimePartitionInterval(),
           clusterParameters.getTimePartitionInterval());
@@ -163,16 +162,14 @@ public class IoTDBClusterNodeGetterIT {
           clusterParameters.getSchemaReplicationFactor());
       Assert.assertEquals(
           expectedParameters.getDataRegionPerDataNode(),
-          clusterParameters.getDataRegionPerDataNode(),
-          0.01);
+          clusterParameters.getDataRegionPerDataNode());
       Assert.assertEquals(
           expectedParameters.getSchemaRegionPerDataNode(),
-          clusterParameters.getSchemaRegionPerDataNode(),
-          0.01);
+          clusterParameters.getSchemaRegionPerDataNode());
       Assert.assertEquals(
           expectedParameters.getDiskSpaceWarningThreshold(),
           clusterParameters.getDiskSpaceWarningThreshold(),
-          0.01);
+          0.001);
       Assert.assertEquals(
           expectedParameters.getReadConsistencyLevel(),
           clusterParameters.getReadConsistencyLevel());

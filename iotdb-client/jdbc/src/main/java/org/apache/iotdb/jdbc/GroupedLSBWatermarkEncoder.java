@@ -16,13 +16,13 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.read.common.Field;
-import org.apache.iotdb.tsfile.read.common.RowRecord;
-
 import org.apache.thrift.EncodingUtils;
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.read.common.Field;
+import org.apache.tsfile.read.common.RowRecord;
 
 import java.math.BigInteger;
 import java.security.MessageDigest;
@@ -46,6 +46,7 @@ public class GroupedLSBWatermarkEncoder implements WatermarkEncoder {
     this.maxBitPosition = minBitPosition;
   }
 
+  @SuppressWarnings("squid:S4790") // ignore Using weak hashing algorithms is security-sensitive
   public static int hashMod(String val, Integer base) {
     MessageDigest md;
     try {
@@ -103,12 +104,12 @@ public class GroupedLSBWatermarkEncoder implements WatermarkEncoder {
     return Double.longBitsToDouble(encodeLong(longBits, timestamp));
   }
 
-  public RowRecord encodeRecord(RowRecord record) {
-    long timestamp = record.getTimestamp();
+  public RowRecord encodeRecord(RowRecord rowRecord) {
+    long timestamp = rowRecord.getTimestamp();
     if (!needEncode(timestamp)) {
-      return record;
+      return rowRecord;
     }
-    List<Field> fields = record.getFields();
+    List<Field> fields = rowRecord.getFields();
     for (Field field : fields) {
       if (field == null || field.getDataType() == null) {
         continue;
@@ -116,10 +117,12 @@ public class GroupedLSBWatermarkEncoder implements WatermarkEncoder {
       TSDataType dataType = field.getDataType();
       switch (dataType) {
         case INT32:
+        case DATE:
           int originIntValue = field.getIntV();
           field.setIntV(encodeInt(originIntValue, timestamp));
           break;
         case INT64:
+        case TIMESTAMP:
           long originLongValue = field.getLongV();
           field.setLongV(encodeLong(originLongValue, timestamp));
           break;
@@ -131,9 +134,13 @@ public class GroupedLSBWatermarkEncoder implements WatermarkEncoder {
           double originDoubleValue = field.getDoubleV();
           field.setDoubleV(encodeDouble(originDoubleValue, timestamp));
           break;
+        case BLOB:
+        case STRING:
+        case BOOLEAN:
+        case TEXT:
         default:
       }
     }
-    return record;
+    return rowRecord;
   }
 }

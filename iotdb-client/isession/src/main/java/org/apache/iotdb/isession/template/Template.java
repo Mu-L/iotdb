@@ -16,12 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.isession.template;
 
 import org.apache.iotdb.rpc.StatementExecutionException;
-import org.apache.iotdb.tsfile.common.constant.TsFileConstant;
-import org.apache.iotdb.tsfile.utils.Pair;
-import org.apache.iotdb.tsfile.utils.ReadWriteIOUtils;
+
+import org.apache.tsfile.common.constant.TsFileConstant;
+import org.apache.tsfile.utils.Pair;
+import org.apache.tsfile.utils.ReadWriteIOUtils;
 
 import java.io.IOException;
 import java.io.OutputStream;
@@ -87,6 +89,7 @@ public class Template {
   }
 
   /** Serialize: templateName[string] isShareTime[boolean] */
+  @SuppressWarnings("squid:S3776") // ignore Cognitive Complexity of methods should not be too high
   public void serialize(OutputStream baos) throws IOException {
     Deque<Pair<String, TemplateNode>> stack = new ArrayDeque<>();
     Set<String> alignedPrefix = new HashSet<>();
@@ -100,7 +103,7 @@ public class Template {
       stack.push(new Pair<>("", child));
     }
 
-    while (stack.size() != 0) {
+    while (!stack.isEmpty()) {
       Pair<String, TemplateNode> cur = stack.pop();
       String prefix = cur.left;
       TemplateNode curNode = cur.right;
@@ -121,11 +124,8 @@ public class Template {
       } else {
         // For each measurement, serialized as: prefixPath, isAlgined, [MeasurementNode]
         ReadWriteIOUtils.write(prefix, baos);
-        if (alignedPrefix.contains(prefix)) {
-          ReadWriteIOUtils.write(true, baos);
-        } else {
-          ReadWriteIOUtils.write(false, baos);
-        }
+        boolean contains = alignedPrefix.contains(prefix);
+        ReadWriteIOUtils.write(contains, baos);
         curNode.serialize(baos);
       }
     }

@@ -21,11 +21,18 @@ package org.apache.iotdb.jdbc;
 
 import org.apache.iotdb.rpc.IoTDBConnectionException;
 import org.apache.iotdb.rpc.IoTDBRpcDataSet;
+import org.apache.iotdb.rpc.RpcUtils;
 import org.apache.iotdb.rpc.StatementExecutionException;
 import org.apache.iotdb.service.rpc.thrift.IClientRPCService;
 import org.apache.iotdb.service.rpc.thrift.TSTracingInfo;
 
 import org.apache.thrift.TException;
+import org.apache.tsfile.common.conf.TSFileConfig;
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.utils.Binary;
+import org.apache.tsfile.utils.DateUtils;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.InputStream;
 import java.io.Reader;
@@ -33,6 +40,7 @@ import java.math.BigDecimal;
 import java.math.MathContext;
 import java.net.URL;
 import java.nio.ByteBuffer;
+import java.nio.charset.Charset;
 import java.sql.Array;
 import java.sql.Blob;
 import java.sql.Clob;
@@ -48,14 +56,20 @@ import java.sql.SQLXML;
 import java.sql.Statement;
 import java.sql.Time;
 import java.sql.Timestamp;
-import java.util.BitSet;
+import java.time.ZoneId;
 import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
+
+import static org.apache.iotdb.rpc.RpcUtils.convertToTimestamp;
 
 public class IoTDBJDBCResultSet implements ResultSet {
 
-  protected Statement statement;
+  private static final Logger LOGGER = LoggerFactory.getLogger(IoTDBJDBCResultSet.class);
+
+  protected IoTDBStatement statement;
   protected SQLWarning warningChain = null;
   protected List<String> columnTypeList;
   protected IoTDBRpcDataSet ioTDBRpcDataSet;
@@ -63,9 +77,12 @@ public class IoTDBJDBCResultSet implements ResultSet {
   private String operationType = "";
   private List<String> columns = null;
   private List<String> sgColumns = null;
+  private Charset charset = TSFileConfig.STRING_CHARSET;
+  private String timeFormat = RpcUtils.DEFAULT_TIME_FORMAT;
 
+  @SuppressWarnings("squid:S107") // ignore Methods should not have too many parameters
   public IoTDBJDBCResultSet(
-      Statement statement,
+      IoTDBStatement statement,
       List<String> columnNameList,
       List<String> columnTypeList,
       Map<String, Integer> columnNameIndex,
@@ -74,14 +91,14 @@ public class IoTDBJDBCResultSet implements ResultSet {
       String sql,
       long queryId,
       long sessionId,
-      List<ByteBuffer> dataset,
+      List<ByteBuffer> dataSet,
       TSTracingInfo tracingInfo,
       long timeout,
-      String operationType,
-      List<String> columns,
-      List<String> sgColumns,
-      BitSet aliasColumnMap,
-      boolean moreData)
+      boolean moreData,
+      ZoneId zoneId,
+      Charset charset,
+      boolean tableModel,
+      List<Integer> columnIndex2TsBlockColumnIndexList)
       throws SQLException {
     this.ioTDBRpcDataSet =
         new IoTDBRpcDataSet(
@@ -92,25 +109,27 @@ public class IoTDBJDBCResultSet implements ResultSet {
             ignoreTimeStamp,
             moreData,
             queryId,
-            ((IoTDBStatement) statement).getStmtId(),
+            statement.getStmtId(),
             client,
             sessionId,
-            dataset,
+            dataSet,
             statement.getFetchSize(),
             timeout,
-            sgColumns,
-            aliasColumnMap);
+            zoneId,
+            timeFormat,
+            statement.getTimeFactor(),
+            tableModel,
+            columnIndex2TsBlockColumnIndexList);
     this.statement = statement;
     this.columnTypeList = columnTypeList;
     if (tracingInfo != null) {
       ioTDBRpcTracingInfo = new IoTDBTracingInfo();
       ioTDBRpcTracingInfo.setTsTracingInfo(tracingInfo);
     }
-    this.operationType = operationType;
-    this.columns = columns;
-    this.sgColumns = sgColumns;
+    this.charset = charset;
   }
 
+  @SuppressWarnings("squid:S107") // ignore Methods should not have too many parameters
   public IoTDBJDBCResultSet(
       Statement statement,
       List<String> columnNameList,
@@ -124,7 +143,8 @@ public class IoTDBJDBCResultSet implements ResultSet {
       List<ByteBuffer> dataSet,
       TSTracingInfo tracingInfo,
       long timeout,
-      boolean moreData)
+      boolean moreData,
+      ZoneId zoneId)
       throws SQLException {
     this.ioTDBRpcDataSet =
         new IoTDBRpcDataSet(
@@ -140,8 +160,13 @@ public class IoTDBJDBCResultSet implements ResultSet {
             sessionId,
             dataSet,
             statement.getFetchSize(),
-            timeout);
-    this.statement = statement;
+            timeout,
+            zoneId,
+            timeFormat,
+            ((IoTDBStatement) statement).getTimeFactor(),
+            false,
+            IntStream.range(0, columnNameList.size()).boxed().collect(Collectors.toList()));
+    this.statement = (IoTDBStatement) statement;
     this.columnTypeList = columnTypeList;
     if (tracingInfo != null) {
       ioTDBRpcTracingInfo = new IoTDBTracingInfo();
@@ -310,12 +335,42 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   @Override
   public byte[] getBytes(int columnIndex) throws SQLException {
-    throw new SQLException(Constant.METHOD_NOT_SUPPORTED);
+    try {
+      final TSDataType dataType = ioTDBRpcDataSet.getDataType(columnIndex);
+      if (dataType == null) {
+        return null;
+      }
+
+      if (dataType.equals(TSDataType.BLOB)) {
+        Binary binary = ioTDBRpcDataSet.getBinary(columnIndex);
+        return binary == null ? null : binary.getValues();
+      } else {
+        String s = ioTDBRpcDataSet.getString(columnIndex);
+        return s == null ? null : s.getBytes(charset);
+      }
+    } catch (StatementExecutionException e) {
+      throw new SQLException(e.getMessage());
+    }
   }
 
   @Override
   public byte[] getBytes(String columnName) throws SQLException {
-    throw new SQLException(Constant.METHOD_NOT_SUPPORTED);
+    try {
+      final TSDataType dataType = ioTDBRpcDataSet.getDataType(columnName);
+      if (dataType == null) {
+        return null;
+      }
+
+      if (dataType.equals(TSDataType.BLOB)) {
+        Binary binary = ioTDBRpcDataSet.getBinary(columnName);
+        return binary == null ? null : binary.getValues();
+      } else {
+        String s = ioTDBRpcDataSet.getString(columnName);
+        return s == null ? null : s.getBytes(charset);
+      }
+    } catch (StatementExecutionException e) {
+      throw new SQLException(e.getMessage());
+    }
   }
 
   @Override
@@ -350,7 +405,7 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   @Override
   public Date getDate(int columnIndex) throws SQLException {
-    return new Date(getLong(columnIndex));
+    return DateUtils.parseIntToDate(getInt(columnIndex));
   }
 
   @Override
@@ -371,6 +426,9 @@ public class IoTDBJDBCResultSet implements ResultSet {
   @Override
   public double getDouble(int columnIndex) throws SQLException {
     try {
+      if (TSDataType.FLOAT == ioTDBRpcDataSet.getDataType(columnIndex)) {
+        return ioTDBRpcDataSet.getFloat(columnIndex);
+      }
       return getDouble(ioTDBRpcDataSet.findColumnNameByIndex(columnIndex));
     } catch (StatementExecutionException e) {
       throw new SQLException(e.getMessage());
@@ -380,6 +438,9 @@ public class IoTDBJDBCResultSet implements ResultSet {
   @Override
   public double getDouble(String columnName) throws SQLException {
     try {
+      if (TSDataType.FLOAT == ioTDBRpcDataSet.getDataType(columnName)) {
+        return ioTDBRpcDataSet.getFloat(columnName);
+      }
       return ioTDBRpcDataSet.getDouble(columnName);
     } catch (StatementExecutionException e) {
       throw new SQLException(e.getMessage());
@@ -467,23 +528,23 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   @Override
   public ResultSetMetaData getMetaData() {
-    String operationType = "";
+    String operationTypeColumn = "";
     boolean nonAlign = false;
     try {
       if (statement.getResultSet() != null) {
-        operationType = ((IoTDBJDBCResultSet) statement.getResultSet()).getOperationType();
+        operationTypeColumn = ((IoTDBJDBCResultSet) statement.getResultSet()).getOperationType();
         this.sgColumns = ((IoTDBJDBCResultSet) statement.getResultSet()).getSgColumns();
       }
     } catch (SQLException throwables) {
-      throwables.printStackTrace();
+      LOGGER.error("get meta data error: {}", throwables.getMessage());
     }
     return new IoTDBResultMetadata(
         nonAlign,
         sgColumns,
-        operationType,
-        ioTDBRpcDataSet.columnNameList,
-        ioTDBRpcDataSet.columnTypeList,
-        ioTDBRpcDataSet.ignoreTimeStamp);
+        operationTypeColumn,
+        ioTDBRpcDataSet.getColumnNameList(),
+        ioTDBRpcDataSet.getColumnTypeList(),
+        ioTDBRpcDataSet.isIgnoreTimeStamp());
   }
 
   @Override
@@ -616,7 +677,8 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   @Override
   public Time getTime(int columnIndex) throws SQLException {
-    return new Time(getLong(columnIndex));
+    long time = statement.getMilliSecond(getLong(columnIndex));
+    return new Time(time);
   }
 
   @Override
@@ -636,12 +698,12 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   @Override
   public Timestamp getTimestamp(int columnIndex) throws SQLException {
-    return new Timestamp(getLong(columnIndex));
+    return convertToTimestamp(getLong(columnIndex), statement.getTimeFactor());
   }
 
   @Override
   public Timestamp getTimestamp(String columnName) throws SQLException {
-    return getTimestamp(findColumn(columnName));
+    return new Timestamp(getLong(columnName));
   }
 
   @Override
@@ -701,7 +763,7 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   @Override
   public boolean isClosed() {
-    return ioTDBRpcDataSet.isClosed;
+    return ioTDBRpcDataSet.isClosed();
   }
 
   @Override
@@ -733,14 +795,6 @@ public class IoTDBJDBCResultSet implements ResultSet {
   public boolean next() throws SQLException {
     try {
       return ioTDBRpcDataSet.next();
-    } catch (StatementExecutionException | IoTDBConnectionException e) {
-      throw new SQLException(e.getMessage());
-    }
-  }
-
-  private boolean fetchResults() throws SQLException {
-    try {
-      return ioTDBRpcDataSet.fetchResults();
     } catch (StatementExecutionException | IoTDBConnectionException e) {
       throw new SQLException(e.getMessage());
     }
@@ -1193,12 +1247,12 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   @Override
   public boolean wasNull() {
-    return ioTDBRpcDataSet.lastReadWasNull;
+    return ioTDBRpcDataSet.isLastReadWasNull();
   }
 
   protected String getValueByName(String columnName) throws SQLException {
     try {
-      return ioTDBRpcDataSet.getValueByName(columnName);
+      return ioTDBRpcDataSet.getString(columnName);
     } catch (StatementExecutionException e) {
       throw new SQLException(e.getMessage());
     }
@@ -1206,7 +1260,7 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   protected Object getObjectByName(String columnName) throws SQLException {
     try {
-      return ioTDBRpcDataSet.getObjectByName(columnName);
+      return ioTDBRpcDataSet.getObject(columnName);
     } catch (StatementExecutionException e) {
       throw new SQLException(e.getMessage());
     }
@@ -1236,7 +1290,7 @@ public class IoTDBJDBCResultSet implements ResultSet {
   }
 
   public boolean isIgnoreTimeStamp() {
-    return ioTDBRpcDataSet.ignoreTimeStamp;
+    return ioTDBRpcDataSet.isIgnoreTimeStamp();
   }
 
   public String getOperationType() {
@@ -1249,5 +1303,9 @@ public class IoTDBJDBCResultSet implements ResultSet {
 
   public List<String> getSgColumns() {
     return sgColumns;
+  }
+
+  public TSDataType getColumnTypeByIndex(int columnIndex) {
+    return ioTDBRpcDataSet.getDataType(columnIndex);
   }
 }

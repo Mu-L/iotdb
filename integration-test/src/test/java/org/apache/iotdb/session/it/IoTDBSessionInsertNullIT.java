@@ -26,12 +26,14 @@ import org.apache.iotdb.itbase.category.ClusterIT;
 import org.apache.iotdb.itbase.category.LocalStandaloneIT;
 import org.apache.iotdb.rpc.IoTDBConnectionException;
 import org.apache.iotdb.rpc.StatementExecutionException;
-import org.apache.iotdb.tsfile.file.metadata.enums.CompressionType;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSEncoding;
-import org.apache.iotdb.tsfile.read.common.Field;
-import org.apache.iotdb.tsfile.read.common.RowRecord;
 
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.file.metadata.enums.CompressionType;
+import org.apache.tsfile.file.metadata.enums.TSEncoding;
+import org.apache.tsfile.read.common.Field;
+import org.apache.tsfile.read.common.RowRecord;
+import org.apache.tsfile.write.record.Tablet;
+import org.apache.tsfile.write.schema.MeasurementSchema;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
@@ -224,7 +226,7 @@ public class IoTDBSessionInsertNullIT {
           assertEquals(3, nums);
           return;
         } catch (Exception e) {
-          LOGGER.info("query records failed, retry: " + i);
+          LOGGER.info("read records failed, retry: " + i);
           Thread.sleep(1000);
         }
       }
@@ -350,6 +352,74 @@ public class IoTDBSessionInsertNullIT {
           Arrays.asList(Arrays.asList(true, null), Arrays.asList(null, null)));
       long nums = queryCountRecords(session, "select count(s1) from " + deviceId1);
       assertEquals(6, nums);
+    } catch (Exception e) {
+      e.printStackTrace();
+      fail(e.getMessage());
+    }
+  }
+
+  @Test
+  public void insertTabletNullTest() {
+    try (ISession session = EnvFactory.getEnv().getSessionConnection()) {
+      prepareData(session);
+
+      String deviceId = "root.sg1.clsu.d1";
+      Tablet tablet =
+          new Tablet(
+              deviceId,
+              Arrays.asList(
+                  new MeasurementSchema("s1", TSDataType.BOOLEAN),
+                  new MeasurementSchema("s2", TSDataType.INT32)),
+              3);
+      tablet.addTimestamp(0, 300);
+      tablet.addValue("s1", 0, null);
+      tablet.addValue("s2", 0, null);
+      tablet.addTimestamp(1, 400);
+      tablet.addValue("s1", 1, null);
+      tablet.addValue("s2", 1, null);
+      tablet.addTimestamp(2, 500);
+      tablet.addValue("s1", 2, null);
+      tablet.addValue("s2", 2, null);
+      session.insertTablet(tablet);
+      long nums = queryCountRecords(session, "select count(s1) from " + deviceId);
+      assertEquals(0, nums);
+      session.executeNonQueryStatement("flush");
+      nums = queryCountRecords(session, "select count(s1) from " + deviceId);
+      assertEquals(0, nums);
+    } catch (Exception e) {
+      e.printStackTrace();
+      fail(e.getMessage());
+    }
+  }
+
+  @Test
+  public void insertAlignedTabletNullTest() {
+    try (ISession session = EnvFactory.getEnv().getSessionConnection()) {
+      prepareData(session);
+
+      String deviceId = "root.sg1.clsu.aligned_d1";
+      Tablet tablet =
+          new Tablet(
+              deviceId,
+              Arrays.asList(
+                  new MeasurementSchema("s1", TSDataType.BOOLEAN),
+                  new MeasurementSchema("s2", TSDataType.INT32)),
+              3);
+      tablet.addTimestamp(0, 300);
+      tablet.addValue("s1", 0, null);
+      tablet.addValue("s2", 0, null);
+      tablet.addTimestamp(1, 400);
+      tablet.addValue("s1", 1, null);
+      tablet.addValue("s2", 1, null);
+      tablet.addTimestamp(2, 500);
+      tablet.addValue("s1", 2, null);
+      tablet.addValue("s2", 2, null);
+      session.insertAlignedTablet(tablet);
+      long nums = queryCountRecords(session, "select count(s1) from " + deviceId);
+      assertEquals(0, nums);
+      session.executeNonQueryStatement("flush");
+      nums = queryCountRecords(session, "select count(s1) from " + deviceId);
+      assertEquals(0, nums);
     } catch (Exception e) {
       e.printStackTrace();
       fail(e.getMessage());

@@ -29,7 +29,7 @@ import org.apache.iotdb.udf.api.customizer.parameter.UDFParameters;
 import org.apache.iotdb.udf.api.customizer.strategy.RowByRowAccessStrategy;
 import org.apache.iotdb.udf.api.type.Type;
 
-/** calculate the approximate percentile */
+/** calculate the approximate percentile. */
 public class UDAFQuantile implements UDTF {
   private org.apache.iotdb.library.dprofile.util.HeapLongKLLSketch sketch;
   private double rank;
@@ -41,7 +41,7 @@ public class UDAFQuantile implements UDTF {
         .validateInputSeriesNumber(1)
         .validateInputSeriesDataType(0, Type.INT32, Type.INT64, Type.FLOAT, Type.DOUBLE)
         .validate(
-            K -> (int) K >= 100,
+            k -> (int) k >= 100,
             "Size K has to be greater or equal than 100.",
             validator.getParameters().getIntOrDefault("K", 800))
         .validate(
@@ -57,10 +57,10 @@ public class UDAFQuantile implements UDTF {
         .setAccessStrategy(new RowByRowAccessStrategy())
         .setOutputDataType(parameters.getDataType(0));
     dataType = parameters.getDataType(0);
-    int K = parameters.getIntOrDefault("K", 800);
+    int k = parameters.getIntOrDefault("K", 800);
     rank = parameters.getDoubleOrDefault("rank", 0.5);
 
-    sketch = new org.apache.iotdb.library.dprofile.util.HeapLongKLLSketch(K * 8);
+    sketch = new org.apache.iotdb.library.dprofile.util.HeapLongKLLSketch(k * 8);
   }
 
   @Override
@@ -85,6 +85,15 @@ public class UDAFQuantile implements UDTF {
         break;
       case DOUBLE:
         collector.putDouble(0, res);
+        break;
+      case TIMESTAMP:
+      case DATE:
+      case TEXT:
+      case STRING:
+      case BLOB:
+      case BOOLEAN:
+      default:
+        break;
     }
   }
 
@@ -101,6 +110,12 @@ public class UDAFQuantile implements UDTF {
       case DOUBLE:
         result = Double.doubleToLongBits((double) data);
         return (double) data >= 0d ? result : result ^ Long.MAX_VALUE;
+      case BLOB:
+      case BOOLEAN:
+      case STRING:
+      case TEXT:
+      case DATE:
+      case TIMESTAMP:
       default:
         return (long) data;
     }
@@ -108,18 +123,22 @@ public class UDAFQuantile implements UDTF {
 
   private double longToResult(long result) {
     switch (dataType) {
-      case INT32:
-        return (double) (result);
       case FLOAT:
         result = (result >>> 31) == 0 ? result : result ^ Long.MAX_VALUE;
         return Float.intBitsToFloat((int) (result));
-      case INT64:
-        return (double) (result);
       case DOUBLE:
         result = (result >>> 63) == 0 ? result : result ^ Long.MAX_VALUE;
         return Double.longBitsToDouble(result);
+      case INT64:
+      case INT32:
+      case DATE:
+      case TEXT:
+      case STRING:
+      case BOOLEAN:
+      case BLOB:
+      case TIMESTAMP:
       default:
-        return (double) (result);
+        return (result);
     }
   }
 }

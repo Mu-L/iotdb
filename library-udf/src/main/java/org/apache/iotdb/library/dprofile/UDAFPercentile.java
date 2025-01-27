@@ -32,13 +32,14 @@ import org.apache.iotdb.udf.api.customizer.strategy.RowByRowAccessStrategy;
 import org.apache.iotdb.udf.api.type.Type;
 
 import java.util.HashMap;
+import java.util.Map;
 
-/** calculate the approximate percentile */
+/** calculate the approximate percentile. */
 public class UDAFPercentile implements UDTF {
-  public static HashMap<Integer, Long> intDic;
-  public static HashMap<Long, Long> longDic;
-  public static HashMap<Float, Long> floatDic;
-  public static HashMap<Double, Long> doubleDic;
+  protected static Map<Integer, Long> intDic;
+  protected static Map<Long, Long> longDic;
+  protected static Map<Float, Long> floatDic;
+  protected static Map<Double, Long> doubleDic;
   private ExactOrderStatistics statistics;
   private GKArray sketch;
   private boolean exact;
@@ -88,6 +89,12 @@ public class UDAFPercentile implements UDTF {
       case DOUBLE:
         doubleDic = new HashMap<>();
         break;
+      case TIMESTAMP:
+      case DATE:
+      case TEXT:
+      case STRING:
+      case BLOB:
+      case BOOLEAN:
       default:
         break;
     }
@@ -110,6 +117,12 @@ public class UDAFPercentile implements UDTF {
         case DOUBLE:
           doubleDic.put(row.getDouble(0), row.getTime());
           break;
+        case BLOB:
+        case BOOLEAN:
+        case STRING:
+        case TEXT:
+        case DATE:
+        case TIMESTAMP:
         default:
           break;
       }
@@ -144,6 +157,12 @@ public class UDAFPercentile implements UDTF {
           time = doubleDic.getOrDefault(dres, 0L);
           collector.putDouble(time, dres);
           break;
+        case DATE:
+        case TIMESTAMP:
+        case TEXT:
+        case STRING:
+        case BOOLEAN:
+        case BLOB:
         default:
           break;
       }
@@ -161,6 +180,15 @@ public class UDAFPercentile implements UDTF {
           break;
         case DOUBLE:
           collector.putDouble(0, res);
+          break;
+        case BOOLEAN:
+        case BLOB:
+        case STRING:
+        case TEXT:
+        case TIMESTAMP:
+        case DATE:
+        default:
+          break;
       }
     }
   }

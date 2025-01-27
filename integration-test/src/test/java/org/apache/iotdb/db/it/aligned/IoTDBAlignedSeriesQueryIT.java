@@ -18,8 +18,8 @@
  */
 package org.apache.iotdb.db.it.aligned;
 
+import org.apache.iotdb.commons.schema.column.ColumnHeaderConstant;
 import org.apache.iotdb.db.it.utils.AlignedWriteUtil;
-import org.apache.iotdb.db.mpp.common.header.ColumnHeaderConstant;
 import org.apache.iotdb.it.env.EnvFactory;
 import org.apache.iotdb.it.framework.IoTDBTestRunner;
 import org.apache.iotdb.itbase.category.ClusterIT;
@@ -40,15 +40,15 @@ import java.sql.Statement;
 import java.util.HashMap;
 import java.util.Map;
 
-import static org.apache.iotdb.db.constant.TestConstant.avg;
-import static org.apache.iotdb.db.constant.TestConstant.count;
-import static org.apache.iotdb.db.constant.TestConstant.firstValue;
-import static org.apache.iotdb.db.constant.TestConstant.lastValue;
-import static org.apache.iotdb.db.constant.TestConstant.maxTime;
-import static org.apache.iotdb.db.constant.TestConstant.maxValue;
-import static org.apache.iotdb.db.constant.TestConstant.minTime;
-import static org.apache.iotdb.db.constant.TestConstant.minValue;
-import static org.apache.iotdb.db.constant.TestConstant.sum;
+import static org.apache.iotdb.db.utils.constant.TestConstant.avg;
+import static org.apache.iotdb.db.utils.constant.TestConstant.count;
+import static org.apache.iotdb.db.utils.constant.TestConstant.firstValue;
+import static org.apache.iotdb.db.utils.constant.TestConstant.lastValue;
+import static org.apache.iotdb.db.utils.constant.TestConstant.maxTime;
+import static org.apache.iotdb.db.utils.constant.TestConstant.maxValue;
+import static org.apache.iotdb.db.utils.constant.TestConstant.minTime;
+import static org.apache.iotdb.db.utils.constant.TestConstant.minValue;
+import static org.apache.iotdb.db.utils.constant.TestConstant.sum;
 import static org.apache.iotdb.itbase.constant.TestConstant.TIMESTAMP_STR;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
@@ -988,6 +988,54 @@ public class IoTDBAlignedSeriesQueryIT {
       try (ResultSet resultSet =
           statement.executeQuery(
               "select * from root.sg1.d1 where time >= 9 and time <= 33 or s5 = 'aligned_test36' or s5 = 'aligned_test37'")) {
+        ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
+        Map<String, Integer> map = new HashMap<>();
+        for (int i = 1; i <= resultSetMetaData.getColumnCount(); i++) {
+          map.put(resultSetMetaData.getColumnName(i), i);
+        }
+        assertEquals(columnNames.length + 1, resultSetMetaData.getColumnCount());
+        int cnt = 0;
+        while (resultSet.next()) {
+          StringBuilder builder = new StringBuilder();
+          builder.append(resultSet.getString(1));
+          for (String columnName : columnNames) {
+            int index = map.get(columnName);
+            builder.append(",").append(resultSet.getString(index));
+          }
+          assertEquals(retArray[cnt], builder.toString());
+          cnt++;
+        }
+        assertEquals(retArray.length, cnt);
+      }
+
+    } catch (SQLException e) {
+      e.printStackTrace();
+      fail(e.getMessage());
+    }
+  }
+
+  @Test
+  public void selectAllAlignedWithLimitOffsetTest() {
+
+    String[] retArray =
+        new String[] {
+          "14,14.0,14,14,null,null",
+          "15,15.0,15,15,null,null",
+          "16,16.0,16,16,null,null",
+          "17,17.0,17,17,null,null",
+          "18,18.0,18,18,null,null",
+        };
+
+    String[] columnNames = {
+      "root.sg1.d1.s1", "root.sg1.d1.s2", "root.sg1.d1.s3", "root.sg1.d1.s4", "root.sg1.d1.s5"
+    };
+
+    try (Connection connection = EnvFactory.getEnv().getConnection();
+        Statement statement = connection.createStatement()) {
+
+      try (ResultSet resultSet =
+          statement.executeQuery(
+              "select * from root.sg1.d1 where time >= 9 and time <= 33 offset 5 limit 5")) {
         ResultSetMetaData resultSetMetaData = resultSet.getMetaData();
         Map<String, Integer> map = new HashMap<>();
         for (int i = 1; i <= resultSetMetaData.getColumnCount(); i++) {

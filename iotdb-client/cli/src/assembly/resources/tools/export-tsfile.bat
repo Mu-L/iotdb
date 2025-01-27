@@ -18,6 +18,9 @@
 @REM
 
 @echo off
+
+title IoTDB Export
+
 echo ````````````````````````````````````````````````
 echo Starting IoTDB Client Export Script
 echo ````````````````````````````````````````````````
@@ -28,20 +31,20 @@ pushd %~dp0..
 if NOT DEFINED IOTDB_HOME set IOTDB_HOME=%CD%
 popd
 
-if NOT DEFINED MAIN_CLASS set MAIN_CLASS=org.apache.iotdb.tool.ExportTsFile
+if NOT DEFINED MAIN_CLASS set MAIN_CLASS=org.apache.iotdb.tool.tsfile.ExportTsFile
 if NOT DEFINED JAVA_HOME goto :err
 
 @REM -----------------------------------------------------------------------------
 @REM JVM Opts we'll use in legacy run or installation
 set JAVA_OPTS=-ea^
- -DIOTDB_HOME=%IOTDB_HOME%
+ -DIOTDB_HOME="%IOTDB_HOME%"
 
 @REM ***** CLASSPATH library setting *****
-set CLASSPATH=%CLASSPATH%;%IOTDB_HOME%\lib\*
+set CLASSPATH=%CLASSPATH%;"%IOTDB_HOME%\lib\*"
 
 REM -----------------------------------------------------------------------------
 
-"%JAVA_HOME%\bin\java" -DIOTDB_HOME=%IOTDB_HOME% %JAVA_OPTS% -cp %CLASSPATH% %MAIN_CLASS% %*
+"%JAVA_HOME%\bin\java" -DIOTDB_HOME="%IOTDB_HOME%" %JAVA_OPTS% -cp %CLASSPATH% %MAIN_CLASS% %*
 set ret_code=%ERRORLEVEL%
 goto finally
 

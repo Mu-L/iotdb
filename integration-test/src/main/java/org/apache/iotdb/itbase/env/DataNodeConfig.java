@@ -16,7 +16,21 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.itbase.env;
 
+import java.util.List;
+
 /** This interface is used to handle properties in iotdb-datanode.properties. */
-public interface DataNodeConfig {}
+public interface DataNodeConfig {
+  DataNodeConfig setMetricReporterType(List<String> metricReporterTypes);
+
+  DataNodeConfig setEnableRestService(boolean enableRestService);
+
+  DataNodeConfig setConnectionTimeoutInMS(int connectionTimeoutInMS);
+
+  DataNodeConfig setLoadTsFileAnalyzeSchemaMemorySizeInBytes(
+      long loadTsFileAnalyzeSchemaMemorySizeInBytes);
+
+  DataNodeConfig setCompactionScheduleInterval(long compactionScheduleInterval);
+}

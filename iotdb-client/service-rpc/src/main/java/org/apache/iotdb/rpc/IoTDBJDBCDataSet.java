@@ -25,16 +25,19 @@ import org.apache.iotdb.service.rpc.thrift.TSCloseOperationReq;
 import org.apache.iotdb.service.rpc.thrift.TSFetchResultsReq;
 import org.apache.iotdb.service.rpc.thrift.TSFetchResultsResp;
 import org.apache.iotdb.service.rpc.thrift.TSQueryDataSet;
-import org.apache.iotdb.tsfile.exception.write.UnSupportedDataTypeException;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.utils.BytesUtils;
-import org.apache.iotdb.tsfile.utils.ReadWriteIOUtils;
 
 import org.apache.thrift.TException;
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.utils.Binary;
+import org.apache.tsfile.utils.BytesUtils;
+import org.apache.tsfile.utils.DateUtils;
+import org.apache.tsfile.utils.ReadWriteIOUtils;
+import org.apache.tsfile.write.UnSupportedDataTypeException;
 
 import java.nio.ByteBuffer;
 import java.nio.charset.StandardCharsets;
 import java.sql.Timestamp;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.BitSet;
 import java.util.HashMap;
@@ -46,6 +49,7 @@ public class IoTDBJDBCDataSet {
 
   public static final String TIMESTAMP_STR = "Time";
   public static final String VALUE_IS_NULL = "The value got by %s (column name) is NULL.";
+  public static final String DATA_TYPE_NOT_SUPPORTED = "Data type %s is not supported.";
   public static final int START_INDEX = 2;
   public String sql;
   public boolean isClosed = false;
@@ -77,8 +81,13 @@ public class IoTDBJDBCDataSet {
   public byte[] currentBitmap; // used to cache the current bitmap for every column
   public static final int FLAG =
       0x80; // used to do `and` operation with bitmap to judge whether the value is null
+  public ZoneId zoneId;
 
-  @SuppressWarnings("squid:S3776") // Suppress high Cognitive Complexity warning
+  @SuppressWarnings({
+    "squid:S3776",
+    "squid:S107"
+  }) // ignore Suppress high Cognitive Complexity warning
+  // ignore Methods should not have too many parameters
   public IoTDBJDBCDataSet(
       String sql,
       List<String> columnNameList,
@@ -91,7 +100,8 @@ public class IoTDBJDBCDataSet {
       long sessionId,
       TSQueryDataSet queryDataSet,
       int fetchSize,
-      long timeout) {
+      long timeout,
+      ZoneId zoneId) {
     this.sessionId = sessionId;
     this.statementId = statementId;
     this.ignoreTimeStamp = ignoreTimeStamp;
@@ -100,6 +110,7 @@ public class IoTDBJDBCDataSet {
     this.client = client;
     this.fetchSize = fetchSize;
     this.timeout = timeout;
+    this.zoneId = zoneId;
     columnSize = columnNameList.size();
 
     this.columnNameList = new ArrayList<>();
@@ -157,9 +168,11 @@ public class IoTDBJDBCDataSet {
           values[i] = new byte[1];
           break;
         case INT32:
+        case DATE:
           values[i] = new byte[Integer.BYTES];
           break;
         case INT64:
+        case TIMESTAMP:
           values[i] = new byte[Long.BYTES];
           break;
         case FLOAT:
@@ -169,17 +182,24 @@ public class IoTDBJDBCDataSet {
           values[i] = new byte[Double.BYTES];
           break;
         case TEXT:
+        case BLOB:
+        case STRING:
           values[i] = null;
           break;
         default:
           throw new UnSupportedDataTypeException(
-              String.format("Data type %s is not supported.", columnTypeDeduplicatedList.get(i)));
+              String.format(DATA_TYPE_NOT_SUPPORTED, columnTypeDeduplicatedList.get(i)));
       }
     }
     this.tsQueryDataSet = queryDataSet;
     this.emptyResultSet = (queryDataSet == null || !queryDataSet.time.hasRemaining());
   }
 
+  @SuppressWarnings({
+    "squid:S3776",
+    "squid:S107"
+  }) // ignore Methods should not have too many parameters
+  // ignore Cognitive Complexity of methods should not be too high
   public IoTDBJDBCDataSet(
       String sql,
       List<String> columnNameList,
@@ -194,7 +214,8 @@ public class IoTDBJDBCDataSet {
       int fetchSize,
       long timeout,
       List<String> sgList,
-      BitSet aliasColumnMap) {
+      BitSet aliasColumnMap,
+      ZoneId zoneId) {
     this.sessionId = sessionId;
     this.statementId = statementId;
     this.ignoreTimeStamp = ignoreTimeStamp;
@@ -203,6 +224,7 @@ public class IoTDBJDBCDataSet {
     this.client = client;
     this.fetchSize = fetchSize;
     this.timeout = timeout;
+    this.zoneId = zoneId;
     columnSize = columnNameList.size();
 
     this.columnNameList = new ArrayList<>();
@@ -227,7 +249,7 @@ public class IoTDBJDBCDataSet {
       for (int i = 0; i < columnNameList.size(); i++) {
         String name = "";
         if (sgList != null
-            && sgList.size() > 0
+            && !sgList.isEmpty()
             && (aliasColumnMap == null || !aliasColumnMap.get(i))) {
           name = sgList.get(i) + "." + columnNameList.get(i);
         } else {
@@ -269,9 +291,11 @@ public class IoTDBJDBCDataSet {
           values[i] = new byte[1];
           break;
         case INT32:
+        case DATE:
           values[i] = new byte[Integer.BYTES];
           break;
         case INT64:
+        case TIMESTAMP:
           values[i] = new byte[Long.BYTES];
           break;
         case FLOAT:
@@ -281,11 +305,13 @@ public class IoTDBJDBCDataSet {
           values[i] = new byte[Double.BYTES];
           break;
         case TEXT:
+        case BLOB:
+        case STRING:
           values[i] = null;
           break;
         default:
           throw new UnSupportedDataTypeException(
-              String.format("Data type %s is not supported.", columnTypeDeduplicatedList.get(i)));
+              String.format(DATA_TYPE_NOT_SUPPORTED, columnTypeDeduplicatedList.get(i)));
       }
     }
     this.tsQueryDataSet = queryDataSet;
@@ -385,15 +411,19 @@ public class IoTDBJDBCDataSet {
           case INT64:
           case FLOAT:
           case DOUBLE:
+          case DATE:
+          case TIMESTAMP:
             valueBuffer.get(values[i]);
             break;
           case TEXT:
+          case BLOB:
+          case STRING:
             int length = valueBuffer.getInt();
             values[i] = ReadWriteIOUtils.readBytes(valueBuffer, length);
             break;
           default:
             throw new UnSupportedDataTypeException(
-                String.format("Data type %s is not supported.", columnTypeDeduplicatedList.get(i)));
+                String.format(DATA_TYPE_NOT_SUPPORTED, columnTypeDeduplicatedList.get(i)));
         }
       }
     }
@@ -557,13 +587,19 @@ public class IoTDBJDBCDataSet {
       case INT32:
         return String.valueOf(BytesUtils.bytesToInt(values[index]));
       case INT64:
+      case TIMESTAMP:
         return String.valueOf(BytesUtils.bytesToLong(values[index]));
       case FLOAT:
         return String.valueOf(BytesUtils.bytesToFloat(values[index]));
       case DOUBLE:
         return String.valueOf(BytesUtils.bytesToDouble(values[index]));
       case TEXT:
+      case STRING:
         return new String(values[index], StandardCharsets.UTF_8);
+      case BLOB:
+        return BytesUtils.parseBlobByteArrayToString(values[index]);
+      case DATE:
+        return DateUtils.formatDate(BytesUtils.bytesToInt(values[index]));
       default:
         return null;
     }
@@ -596,7 +632,14 @@ public class IoTDBJDBCDataSet {
       case DOUBLE:
         return BytesUtils.bytesToDouble(values[index]);
       case TEXT:
+      case STRING:
         return new String(values[index], StandardCharsets.UTF_8);
+      case BLOB:
+        return new Binary(values[index]);
+      case TIMESTAMP:
+        return new Timestamp(BytesUtils.bytesToLong(values[index]));
+      case DATE:
+        return DateUtils.parseIntToDate(BytesUtils.bytesToInt(values[index]));
       default:
         return null;
     }

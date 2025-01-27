@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.apache.iotdb.common.rpc.thrift.TSStatus;
@@ -40,13 +41,14 @@ import java.sql.SQLException;
 import java.sql.Statement;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.any;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
 public class IoTDBDatabaseMetadataTest {
@@ -69,7 +71,8 @@ public class IoTDBDatabaseMetadataTest {
 
     when(connection.createStatement())
         .thenReturn(new IoTDBStatement(connection, client, sessionId, zoneID, 0, 1L));
-    databaseMetaData = new IoTDBDatabaseMetadata(connection, client, sessionId);
+    when(connection.getTimeFactor()).thenReturn(1_000);
+    databaseMetaData = new IoTDBDatabaseMetadata(connection, client, sessionId, zoneID);
     when(client.executeStatementV2(any(TSExecuteStatementReq.class))).thenReturn(execStatementResp);
     when(client.getProperties()).thenReturn(properties);
     when(execStatementResp.getStatus()).thenReturn(successStatus);
@@ -127,21 +130,25 @@ public class IoTDBDatabaseMetadataTest {
     dataTypeList.add("TEXT");
     List<String> columnsList = new ArrayList<String>();
     columnsList.add("database");
-    Map<String, Integer> columnNameIndexMap = new HashMap<String, Integer>();
+    Map<String, Integer> columnNameIndexMap = new HashMap<>();
     columnNameIndexMap.put("database", 0);
     when(client.executeQueryStatementV2(any(TSExecuteStatementReq.class)))
         .thenReturn(execStatementResp);
+    when(client.closeOperation(any())).thenReturn(RpcUtils.getStatus(TSStatusCode.SUCCESS_STATUS));
     when(execStatementResp.getStatus()).thenReturn(RpcUtils.getStatus(TSStatusCode.SUCCESS_STATUS));
     when(execStatementResp.getQueryId()).thenReturn(queryId);
     when(execStatementResp.getDataTypeList()).thenReturn(dataTypeList);
     when(execStatementResp.getColumns()).thenReturn(columnsList);
+    when(execStatementResp.isSetQueryResult()).thenReturn(true);
+    when(execStatementResp.getQueryResult()).thenReturn(Collections.emptyList());
+    when(execStatementResp.isSetTableModel()).thenReturn(false);
+
+    execStatementResp.moreData = false;
+    when(execStatementResp.isIgnoreTimeStamp()).thenReturn(true);
+    when(execStatementResp.getColumnIndex2TsBlockColumnIndexList()).thenReturn(Arrays.asList(0));
     execStatementResp.columnNameIndexMap = columnNameIndexMap;
-    when(client.getProperties().getWatermarkSecretKey()).thenReturn("IoTDB*2019@Beijing");
-    when(client.getProperties().getWatermarkBitString()).thenReturn("100101110100");
-    when(client.getProperties().getWatermarkParamMarkRate()).thenReturn(5);
-    when(client.getProperties().getWatermarkParamMaxRightBit()).thenReturn(5);
     ResultSet rs = databaseMetaData.getCatalogs();
-    assertEquals(2, rs.findColumn("TYPE_CAT"));
+    assertEquals(1, rs.findColumn("TYPE_CAT"));
   }
 
   @Test

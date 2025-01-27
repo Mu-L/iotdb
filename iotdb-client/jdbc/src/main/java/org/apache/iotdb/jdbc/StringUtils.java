@@ -16,13 +16,19 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.math.BigDecimal;
 
 public class StringUtils {
+
+  private static final Logger LOGGER = LoggerFactory.getLogger(StringUtils.class);
 
   private static byte[] allBytes = new byte[256];
 
@@ -47,8 +53,9 @@ public class StringUtils {
       byteToChars[j] = allBytesString.charAt(j);
     }
     try {
-      toPlainStringMethod = BigDecimal.class.getMethod("toPlainString", new Class[0]);
+      toPlainStringMethod = BigDecimal.class.getMethod("toPlainString");
     } catch (NoSuchMethodException nsme) {
+      LOGGER.warn("To plain String method Error:", nsme);
     }
   }
 
@@ -59,9 +66,8 @@ public class StringUtils {
     if (toPlainStringMethod != null) {
       try {
         return (String) toPlainStringMethod.invoke(decimal, null);
-      } catch (InvocationTargetException invokeEx) {
-
-      } catch (IllegalAccessException accessEx) {
+      } catch (InvocationTargetException | IllegalAccessException e) {
+        LOGGER.warn("consistent to String Error:", e);
       }
     }
     return decimal.toString();
@@ -75,7 +81,7 @@ public class StringUtils {
     if (ePos != -1 && dString.length() > ePos + 1) {
       char maybeMinusChar = dString.charAt(ePos + 1);
       if (maybeMinusChar != '-' && maybeMinusChar != '+') {
-        StringBuffer buf = new StringBuffer(dString.length() + 1);
+        StringBuilder buf = new StringBuilder(dString.length() + 1);
         buf.append(dString.substring(0, ePos + 1));
         buf.append('+');
         buf.append(dString.substring(ePos + 1, dString.length()));
@@ -84,4 +90,6 @@ public class StringUtils {
     }
     return dString;
   }
+
+  private StringUtils() {}
 }

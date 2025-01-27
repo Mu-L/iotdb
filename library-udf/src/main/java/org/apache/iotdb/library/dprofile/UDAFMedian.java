@@ -31,7 +31,9 @@ import org.apache.iotdb.udf.api.customizer.parameter.UDFParameters;
 import org.apache.iotdb.udf.api.customizer.strategy.RowByRowAccessStrategy;
 import org.apache.iotdb.udf.api.type.Type;
 
-/** calculate the exact or approximate median */
+import java.util.NoSuchElementException;
+
+/** calculate the exact or approximate median. */
 public class UDAFMedian implements UDTF {
 
   private ExactOrderStatistics statistics;
@@ -73,10 +75,14 @@ public class UDAFMedian implements UDTF {
 
   @Override
   public void terminate(PointCollector collector) throws Exception {
-    if (exact) {
-      collector.putDouble(0, statistics.getMedian());
-    } else {
-      collector.putDouble(0, sketch.query(0.5));
+    try {
+      if (exact) {
+        collector.putDouble(0, statistics.getMedian());
+      } else {
+        collector.putDouble(0, sketch.query(0.5));
+      }
+    } catch (NoSuchElementException e) {
+      // just ignore it
     }
   }
 }

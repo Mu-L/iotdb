@@ -23,17 +23,55 @@ import org.apache.iotdb.pipe.api.exception.PipeAttributeNotProvidedException;
 import org.apache.iotdb.pipe.api.exception.PipeParameterNotValidException;
 
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.List;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 public class PipeParameterValidator {
 
   private final PipeParameters parameters;
 
-  public PipeParameterValidator(PipeParameters parameters) {
+  public PipeParameterValidator(final PipeParameters parameters) {
     this.parameters = parameters;
   }
 
   public PipeParameters getParameters() {
     return parameters;
+  }
+
+  /**
+   * Validates whether the attributes entered by the user contain at least one attribute from
+   * lhsAttributes or rhsAttributes (if required), but not both.
+   *
+   * @param lhsAttributes list of left-hand side synonym attributes
+   * @param rhsAttributes list of right-hand side synonym attributes
+   * @param isRequired specifies whether at least one attribute from lhsAttributes or rhsAttributes
+   *     must be provided
+   * @throws PipeParameterNotValidException if both lhsAttributes and rhsAttributes are provided
+   * @throws PipeAttributeNotProvidedException if isRequired is true and neither lhsAttributes nor
+   *     rhsAttributes are provided
+   * @return the instance of PipeParameterValidator for method chaining
+   */
+  public PipeParameterValidator validateSynonymAttributes(
+      final List<String> lhsAttributes,
+      final List<String> rhsAttributes,
+      final boolean isRequired) {
+    final boolean lhsExistence = lhsAttributes.stream().anyMatch(parameters::hasAttribute);
+    final boolean rhsExistence = rhsAttributes.stream().anyMatch(parameters::hasAttribute);
+    if (lhsExistence && rhsExistence) {
+      throw new PipeParameterNotValidException(
+          String.format(
+              "Cannot specify both %s and %s at the same time", lhsAttributes, rhsAttributes));
+    }
+    if (isRequired && !lhsExistence && !rhsExistence) {
+      throw new PipeAttributeNotProvidedException(
+          Stream.concat(lhsAttributes.stream(), rhsAttributes.stream())
+              .collect(
+                  Collectors.collectingAndThen(Collectors.toList(), Collections::unmodifiableList))
+              .toString());
+    }
+    return this;
   }
 
   /**
@@ -43,7 +81,7 @@ public class PipeParameterValidator {
    * @param key key of the attribute
    * @throws PipeAttributeNotProvidedException if the attribute is not provided
    */
-  public PipeParameterValidator validateRequiredAttribute(String key)
+  public PipeParameterValidator validateRequiredAttribute(final String key)
       throws PipeAttributeNotProvidedException {
     if (!parameters.hasAttribute(key)) {
       throw new PipeAttributeNotProvidedException(key);
@@ -52,28 +90,26 @@ public class PipeParameterValidator {
   }
 
   public PipeParameterValidator validateAttributeValueRange(
-      String key, boolean canBeOptional, String... optionalValues)
+      final String key, final boolean canBeOptional, final String... optionalValues)
       throws PipeAttributeNotProvidedException {
     if (!parameters.hasAttribute(key)) {
       if (!canBeOptional) {
-        throw new PipeAttributeNotProvidedException(String.format("%s should be set.", key));
+        throw new PipeParameterNotValidException(String.format("Parameter %s should be set.", key));
       }
       return this;
     }
 
-    final String actualValue = parameters.getString(key);
+    final String actualValue = parameters.getStringByKeys(key);
     for (String optionalValue : optionalValues) {
       if (actualValue.equals(optionalValue)) {
         return this;
       }
     }
 
-    if (canBeOptional) {
-      return this;
-    }
-
-    throw new PipeAttributeNotProvidedException(
-        String.format("%s should be one of %s", key, Arrays.toString(optionalValues)));
+    throw new PipeParameterNotValidException(
+        String.format(
+            "Invalid value %s of %s. The value should be one of %s",
+            actualValue, key, Arrays.toString(optionalValues)));
   }
 
   /**
@@ -85,9 +121,9 @@ public class PipeParameterValidator {
    * @throws PipeParameterNotValidException if the given argument is not valid
    */
   public PipeParameterValidator validate(
-      PipeParameterValidator.SingleObjectValidationRule validationRule,
-      String messageToThrow,
-      Object argument)
+      final SingleObjectValidationRule validationRule,
+      final String messageToThrow,
+      final Object argument)
       throws PipeParameterNotValidException {
     if (!validationRule.validate(argument)) {
       throw new PipeParameterNotValidException(messageToThrow);
@@ -97,7 +133,7 @@ public class PipeParameterValidator {
 
   public interface SingleObjectValidationRule {
 
-    boolean validate(Object arg);
+    boolean validate(final Object arg);
   }
 
   /**
@@ -109,9 +145,9 @@ public class PipeParameterValidator {
    * @throws PipeParameterNotValidException if the given arguments are not valid
    */
   public PipeParameterValidator validate(
-      PipeParameterValidator.MultipleObjectsValidationRule validationRule,
-      String messageToThrow,
-      Object... arguments)
+      final MultipleObjectsValidationRule validationRule,
+      final String messageToThrow,
+      final Object... arguments)
       throws PipeParameterNotValidException {
     if (!validationRule.validate(arguments)) {
       throw new PipeParameterNotValidException(messageToThrow);
@@ -121,6 +157,6 @@ public class PipeParameterValidator {
 
   public interface MultipleObjectsValidationRule {
 
-    boolean validate(Object... args);
+    boolean validate(final Object... args);
   }
 }

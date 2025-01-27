@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.apache.thrift.transport.TTransportException;
@@ -35,6 +36,7 @@ import java.util.regex.Pattern;
 public class IoTDBDriver implements Driver {
   private static final org.slf4j.Logger logger =
       org.slf4j.LoggerFactory.getLogger(IoTDBDriver.class);
+
   /** Is this driver JDBC compliant. */
   private static final boolean TSFILE_JDBC_COMPLIANT = false;
 
@@ -46,7 +48,7 @@ public class IoTDBDriver implements Driver {
     }
   }
 
-  private final String TSFILE_URL_PREFIX = Config.IOTDB_URL_PREFIX + ".*";
+  private static final String TSFILE_URL_PREFIX = Config.IOTDB_URL_PREFIX + ".*";
 
   public IoTDBDriver() {
     // This is a constructor.
