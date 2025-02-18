@@ -16,7 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.itbase.env;
+
+import java.util.concurrent.TimeUnit;
 
 /** This interface is used to handle properties in iotdb-common.properties. */
 public interface CommonConfig {
@@ -33,6 +36,12 @@ public interface CommonConfig {
 
   CommonConfig setCompressor(String compressor);
 
+  CommonConfig setEncryptFlag(boolean encryptFlag);
+
+  CommonConfig setEncryptType(String encryptType);
+
+  CommonConfig setEncryptKeyPath(String encryptKeyPath);
+
   CommonConfig setConfigRegionRatisRPCLeaderElectionTimeoutMaxMs(int maxMs);
 
   CommonConfig setUdfMemoryBudgetInMB(float udfCollectorMemoryBudgetInMB);
@@ -44,6 +53,8 @@ public interface CommonConfig {
   CommonConfig setEnableMemControl(boolean enableMemControl);
 
   CommonConfig setEnableCrossSpaceCompaction(boolean enableCrossSpaceCompaction);
+
+  CommonConfig setInnerCompactionCandidateFileNum(int maxInnerCompactionCandidateFileNum);
 
   CommonConfig setAutoCreateSchemaEnabled(boolean enableAutoCreateSchema);
 
@@ -61,7 +72,7 @@ public interface CommonConfig {
 
   CommonConfig setDataRegionConsensusProtocolClass(String dataRegionConsensusProtocolClass);
 
-  CommonConfig setEnableDataPartitionInheritPolicy(boolean enableDataPartitionInheritPolicy);
+  CommonConfig setIoTConsensusV2Mode(String ioTConsensusV2Mode);
 
   CommonConfig setSchemaRegionGroupExtensionPolicy(String schemaRegionGroupExtensionPolicy);
 
@@ -77,17 +88,19 @@ public interface CommonConfig {
 
   CommonConfig setTimePartitionInterval(long timePartitionInterval);
 
+  CommonConfig setTTLCheckInterval(long ttlCheckInterval);
+
+  CommonConfig setTimePartitionOrigin(long timePartitionOrigin);
+
+  CommonConfig setTimestampPrecision(String timestampPrecision);
+
+  TimeUnit getTimestampPrecision();
+
+  CommonConfig setTimestampPrecisionCheckEnabled(boolean timestampPrecisionCheckEnabled);
+
   CommonConfig setConfigNodeRatisSnapshotTriggerThreshold(int ratisSnapshotTriggerThreshold);
 
   CommonConfig setMaxDegreeOfIndexNode(int maxDegreeOfIndexNode);
-
-  CommonConfig setEnableWatermark(boolean enableWatermark);
-
-  CommonConfig setWatermarkSecretKey(String watermarkSecretKey);
-
-  CommonConfig setWatermarkBitString(String watermarkBitString);
-
-  CommonConfig setWatermarkMethod(String watermarkMethod);
 
   CommonConfig setEnableMQTTService(boolean enableMQTTService);
 
@@ -103,23 +116,59 @@ public interface CommonConfig {
 
   CommonConfig setQueryThreadCount(int queryThreadCount);
 
+  CommonConfig setWalBufferSize(int walBufferSize);
+
   CommonConfig setDegreeOfParallelism(int degreeOfParallelism);
 
   CommonConfig setDataRatisTriggerSnapshotThreshold(long threshold);
 
   CommonConfig setSeriesSlotNum(int seriesSlotNum);
 
+  CommonConfig setSeriesPartitionExecutorClass(String seriesPartitionExecutorClass);
+
   CommonConfig setSchemaMemoryAllocate(String schemaMemoryAllocate);
 
   CommonConfig setWriteMemoryProportion(String writeMemoryProportion);
 
-  CommonConfig setClusterSchemaLimitLevel(String clusterSchemaLimitLevel);
+  CommonConfig setClusterTimeseriesLimitThreshold(long clusterTimeseriesLimitThreshold);
 
-  CommonConfig setClusterSchemaLimitThreshold(long clusterSchemaLimitThreshold);
+  CommonConfig setClusterDeviceLimitThreshold(long clusterDeviceLimitThreshold);
+
+  CommonConfig setDatabaseLimitThreshold(long databaseLimitThreshold);
 
   CommonConfig setQuotaEnable(boolean quotaEnable);
 
   CommonConfig setSortBufferSize(long sortBufferSize);
 
   CommonConfig setMaxTsBlockSizeInByte(long maxTsBlockSizeInByte);
+
+  CommonConfig setDataRegionPerDataNode(double dataRegionPerDataNode);
+
+  CommonConfig setSchemaRegionPerDataNode(double schemaRegionPerDataNode);
+
+  CommonConfig setPipeAirGapReceiverEnabled(boolean isPipeAirGapReceiverEnabled);
+
+  CommonConfig setDriverTaskExecutionTimeSliceInMs(long driverTaskExecutionTimeSliceInMs);
+
+  CommonConfig setWalMode(String walMode);
+
+  CommonConfig setTagAttributeTotalSize(int tagAttributeTotalSize);
+
+  CommonConfig setDnConnectionTimeoutMs(int connectionTimeoutMs);
+
+  CommonConfig setPipeHeartbeatIntervalSecondsForCollectingPipeMeta(
+      int pipeHeartbeatIntervalSecondsForCollectingPipeMeta);
+
+  CommonConfig setPipeMetaSyncerInitialSyncDelayMinutes(long pipeMetaSyncerInitialSyncDelayMinutes);
+
+  CommonConfig setPipeMetaSyncerSyncIntervalMinutes(long pipeMetaSyncerSyncIntervalMinutes);
+
+  CommonConfig setPipeConnectorRequestSliceThresholdBytes(
+      int pipeConnectorRequestSliceThresholdBytes);
+
+  CommonConfig setQueryMemoryProportion(String queryMemoryProportion);
+
+  default CommonConfig setDefaultStorageGroupLevel(int defaultStorageGroupLevel) {
+    return this;
+  }
 }

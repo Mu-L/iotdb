@@ -16,7 +16,12 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.itbase.env;
 
+import java.util.List;
+
 /** This interface is used to handle properties in iotdb-confignode.properties. */
-public interface ConfigNodeConfig {}
+public interface ConfigNodeConfig {
+  ConfigNodeConfig setMetricReporterType(List<String> metricReporterTypes);
+}

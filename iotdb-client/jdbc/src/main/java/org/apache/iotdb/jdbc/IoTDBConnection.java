@@ -16,10 +16,11 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.apache.iotdb.common.rpc.thrift.TSStatus;
-import org.apache.iotdb.rpc.RpcTransportFactory;
+import org.apache.iotdb.rpc.DeepCopyRpcTransportFactory;
 import org.apache.iotdb.rpc.RpcUtils;
 import org.apache.iotdb.rpc.StatementExecutionException;
 import org.apache.iotdb.service.rpc.thrift.IClientRPCService;
@@ -30,6 +31,7 @@ import org.apache.iotdb.service.rpc.thrift.TSOpenSessionResp;
 import org.apache.iotdb.service.rpc.thrift.TSProtocolVersion;
 import org.apache.iotdb.service.rpc.thrift.TSSetTimeZoneReq;
 
+import org.apache.commons.lang3.StringUtils;
 import org.apache.thrift.TException;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TCompactProtocol;
@@ -38,6 +40,7 @@ import org.apache.thrift.transport.TTransportException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.nio.charset.Charset;
 import java.sql.Array;
 import java.sql.Blob;
 import java.sql.CallableStatement;
@@ -74,6 +77,7 @@ public class IoTDBConnection implements Connection {
   private boolean isClosed = true;
   private SQLWarning warningChain = null;
   private TTransport transport;
+
   /**
    * Timeout of query can be set by users. Unit: s If not set, default value 0 will be used, which
    * will use server configuration.
@@ -87,6 +91,8 @@ public class IoTDBConnection implements Connection {
   private int networkTimeout = Config.DEFAULT_CONNECTION_TIMEOUT_MS;
 
   private ZoneId zoneId;
+  private Charset charset;
+
   private boolean autoCommit;
   private String url;
 
@@ -95,6 +101,18 @@ public class IoTDBConnection implements Connection {
   }
 
   private String userName;
+
+  // default is tree
+  public String getSqlDialect() {
+    if (params != null && StringUtils.isNotBlank(params.getSqlDialect())) {
+      return params.getSqlDialect();
+    } else {
+      return "tree";
+    }
+  }
+
+  // ms is 1_000, us is 1_000_000, ns is 1_000_000_000
+  private int timeFactor = 1_000;
 
   public IoTDBConnection() {
     // allowed to create an instance without parameter input.
@@ -109,6 +127,7 @@ public class IoTDBConnection implements Connection {
     this.userName = info.get("user").toString();
     this.networkTimeout = params.getNetworkTimeout();
     this.zoneId = ZoneId.of(params.getTimeZone());
+    this.charset = params.getCharset();
     openTransport();
     if (Config.rpcThriftCompressionEnable) {
       setClient(new IClientRPCService.Client(new TCompactProtocol(transport)));
@@ -124,6 +143,10 @@ public class IoTDBConnection implements Connection {
 
   public String getUrl() {
     return url;
+  }
+
+  public IoTDBConnectionParams getParams() {
+    return params;
   }
 
   @Override
@@ -166,9 +189,7 @@ public class IoTDBConnection implements Connection {
   }
 
   @Override
-  public void commit() throws SQLException {
-    throw new SQLException("Does not support commit");
-  }
+  public void commit() throws SQLException {}
 
   @Override
   public Array createArrayOf(String arg0, Object[] arg1) throws SQLException {
@@ -200,7 +221,7 @@ public class IoTDBConnection implements Connection {
     if (isClosed) {
       throw new SQLException("Cannot create statement because connection is closed");
     }
-    return new IoTDBStatement(this, getClient(), sessionId, zoneId, queryTimeout);
+    return new IoTDBStatement(this, getClient(), sessionId, zoneId, charset, queryTimeout);
   }
 
   @Override
@@ -215,7 +236,7 @@ public class IoTDBConnection implements Connection {
       throw new SQLException(
           String.format("Statements with ResultSet type %d are not supported", resultSetType));
     }
-    return new IoTDBStatement(this, getClient(), sessionId, zoneId, queryTimeout);
+    return new IoTDBStatement(this, getClient(), sessionId, zoneId, charset, queryTimeout);
   }
 
   @Override
@@ -265,7 +286,6 @@ public class IoTDBConnection implements Connection {
 
   @Override
   public int getHoldability() {
-    // throw new SQLException("Method not supported");
     return 0;
   }
 
@@ -279,7 +299,7 @@ public class IoTDBConnection implements Connection {
     if (isClosed) {
       throw new SQLException("Cannot create statement because connection is closed");
     }
-    return new IoTDBDatabaseMetadata(this, getClient(), sessionId);
+    return new IoTDBDatabaseMetadata(this, getClient(), sessionId, zoneId);
   }
 
   @Override
@@ -367,7 +387,7 @@ public class IoTDBConnection implements Connection {
 
   @Override
   public PreparedStatement prepareStatement(String sql) throws SQLException {
-    return new IoTDBPreparedStatement(this, getClient(), sessionId, sql, zoneId);
+    return new IoTDBPreparedStatement(this, getClient(), sessionId, sql, zoneId, charset);
   }
 
   @Override
@@ -467,11 +487,22 @@ public class IoTDBConnection implements Connection {
   }
 
   private void openTransport() throws TTransportException {
-    RpcTransportFactory.setDefaultBufferCapacity(params.getThriftDefaultBufferSize());
-    RpcTransportFactory.setThriftMaxFrameSize(params.getThriftMaxFrameSize());
-    transport =
-        RpcTransportFactory.INSTANCE.getTransport(
-            params.getHost(), params.getPort(), getNetworkTimeout());
+    DeepCopyRpcTransportFactory.setDefaultBufferCapacity(params.getThriftDefaultBufferSize());
+    DeepCopyRpcTransportFactory.setThriftMaxFrameSize(params.getThriftMaxFrameSize());
+
+    if (params.isUseSSL()) {
+      transport =
+          DeepCopyRpcTransportFactory.INSTANCE.getTransport(
+              params.getHost(),
+              params.getPort(),
+              getNetworkTimeout(),
+              params.getTrustStore(),
+              params.getTrustStorePwd());
+    } else {
+      transport =
+          DeepCopyRpcTransportFactory.INSTANCE.getTransport(
+              params.getHost(), params.getPort(), getNetworkTimeout());
+    }
     if (!transport.isOpen()) {
       transport.open();
     }
@@ -483,7 +514,9 @@ public class IoTDBConnection implements Connection {
     openReq.setUsername(params.getUsername());
     openReq.setPassword(params.getPassword());
     openReq.setZoneId(getTimeZone());
-    openReq.putToConfiguration("version", params.getVersion().toString());
+    openReq.putToConfiguration(Config.VERSION, params.getVersion().toString());
+    openReq.putToConfiguration(Config.SQL_DIALECT, params.getSqlDialect());
+    params.getDb().ifPresent(db -> openReq.putToConfiguration(Config.DATABASE, db));
 
     TSOpenSessionResp openResp = null;
     try {
@@ -492,6 +525,7 @@ public class IoTDBConnection implements Connection {
       // validate connection
       RpcUtils.verifySuccess(openResp.getStatus());
 
+      this.timeFactor = RpcUtils.getTimeFactor(openResp);
       if (protocolVersion.getValue() != openResp.getServerProtocolVersion().getValue()) {
         logger.warn(
             "Protocol differ, Client version is {}}, but Server version is {}",
@@ -577,5 +611,17 @@ public class IoTDBConnection implements Connection {
 
   public ServerProperties getServerProperties() throws TException {
     return getClient().getProperties();
+  }
+
+  protected void changeDefaultDatabase(String database) {
+    params.setDb(database);
+  }
+
+  protected void changeDefaultSqlDialect(String sqlDialect) {
+    params.setSqlDialect(sqlDialect);
+  }
+
+  public int getTimeFactor() {
+    return timeFactor;
   }
 }

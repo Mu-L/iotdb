@@ -18,7 +18,7 @@
  */
 package org.apache.iotdb.db.it.last;
 
-import org.apache.iotdb.db.mpp.common.header.ColumnHeaderConstant;
+import org.apache.iotdb.commons.schema.column.ColumnHeaderConstant;
 import org.apache.iotdb.it.env.EnvFactory;
 import org.apache.iotdb.it.framework.IoTDBTestRunner;
 import org.apache.iotdb.itbase.category.ClusterIT;
@@ -65,10 +65,10 @@ public class IoTDBLastWithTTLIT {
   public void withTTL() {
     String[] retArray =
         new String[] {
-          "1,root.sg.d1.s1,1.0,FLOAT",
-          "1,root.sg.d1.s2,1.0,FLOAT",
-          "2,root.sg.d2.s1,1.0,FLOAT",
-          "2,root.sg.d2.s2,1.0,FLOAT"
+          "1,root.sg.d1.s1,1.0,DOUBLE",
+          "1,root.sg.d1.s2,1.0,DOUBLE",
+          "2,root.sg.d2.s1,1.0,DOUBLE",
+          "2,root.sg.d2.s2,1.0,DOUBLE"
         };
 
     try (Connection connection = EnvFactory.getEnv().getConnection();

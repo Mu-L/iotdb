@@ -14,6 +14,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.ops4j.pax.jdbc.common.BeanConfig;
@@ -44,16 +45,13 @@ public class IoTDBDataSourceFactory implements DataSourceFactory {
     String url = (String) properties.remove(DataSourceFactory.JDBC_URL);
     if (url != null) {
       ds.setUrl(url);
-      logger.info("URL set {}", url);
     }
 
     String user = (String) properties.remove(DataSourceFactory.JDBC_USER);
     ds.setUser(user);
-    logger.info("User set {}", user);
 
     String password = (String) properties.remove(DataSourceFactory.JDBC_PASSWORD);
     ds.setPassword(password);
-    logger.info("Password set {}", password);
 
     logger.info("Remaining properties {}", properties.size());
 

@@ -27,10 +27,10 @@ import org.apache.iotdb.session.Session;
 import org.apache.iotdb.trigger.api.Trigger;
 import org.apache.iotdb.trigger.api.TriggerAttributes;
 import org.apache.iotdb.trigger.api.enums.FailureStrategy;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.utils.BitMap;
-import org.apache.iotdb.tsfile.write.record.Tablet;
 
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.utils.BitMap;
+import org.apache.tsfile.write.record.Tablet;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -62,35 +62,35 @@ public class StatisticsUpdaterTrigger implements Trigger {
       IoTDBThreadPoolFactory.newSingleThreadScheduledExecutor(
           "Stateful-Trigger-Statistics-Updater");
 
-  private static final long UPDATE_INTERVAL = 1000 * 20;
+  private static final long UPDATE_INTERVAL = 1000 * 20L;
 
   @Override
   public void onCreate(TriggerAttributes attributes) throws Exception {
     if (attributes.hasAttribute("ip")) {
       ip = attributes.getString("ip");
     } else {
-      throw new RuntimeException("ip is required");
+      throw new IllegalArgumentException("ip is required");
     }
     if (attributes.hasAttribute("port")) {
       port = Integer.parseInt(attributes.getString("port"));
     } else {
-      throw new RuntimeException("port is required");
+      throw new IllegalArgumentException("port is required");
     }
   }
 
   @Override
   public boolean fire(Tablet tablet) throws Exception {
     ensureSession();
-    if (tablet.bitMaps == null) {
-      cnt.addAndGet((long) tablet.rowSize * tablet.getSchemas().size());
+    if (tablet.getBitMaps() == null) {
+      cnt.addAndGet((long) tablet.getRowSize() * tablet.getSchemas().size());
       return true;
     }
     for (int column = 0; column < tablet.getSchemas().size(); column++) {
-      BitMap bitMap = tablet.bitMaps[column];
+      BitMap bitMap = tablet.getBitMaps()[column];
       if (bitMap == null) {
-        cnt.addAndGet(tablet.rowSize);
+        cnt.addAndGet(tablet.getRowSize());
       } else {
-        for (int row = 0; row < tablet.rowSize; row++) {
+        for (int row = 0; row < tablet.getRowSize(); row++) {
           if (!bitMap.isMarked(row)) {
             cnt.incrementAndGet();
           }

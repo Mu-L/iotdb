@@ -16,9 +16,10 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.db.it.schema;
 
-import org.apache.iotdb.db.mpp.common.header.ColumnHeaderConstant;
+import org.apache.iotdb.commons.schema.column.ColumnHeaderConstant;
 import org.apache.iotdb.it.env.EnvFactory;
 import org.apache.iotdb.itbase.category.ClusterIT;
 import org.apache.iotdb.itbase.category.LocalStandaloneIT;
@@ -603,6 +604,35 @@ public class IoTDBTagAlterIT extends AbstractSchemaIT {
       }
 
     } catch (Exception e) {
+      e.printStackTrace();
+      fail();
+    }
+  }
+
+  @Test
+  public void alterDuplicateAliasTest() {
+    try (final Connection connection = EnvFactory.getEnv().getConnection();
+        final Statement statement = connection.createStatement()) {
+      statement.execute(
+          "create timeseries root.turbine.d1.s1(a1) with datatype=FLOAT, encoding=RLE, compression=SNAPPY;");
+      statement.execute("create timeseries root.turbine.d1.s2 with datatype=INT32, encoding=RLE;");
+      try {
+        statement.execute("alter timeseries root.turbine.d1.s2 upsert alias=s1;");
+        fail();
+      } catch (final Exception e) {
+        assertTrue(
+            e.getMessage()
+                .contains("The alias is duplicated with the name or alias of other measurement"));
+      }
+      try {
+        statement.execute("alter timeseries root.turbine.d1.s2 upsert alias=a1;");
+        fail();
+      } catch (final Exception e) {
+        assertTrue(
+            e.getMessage()
+                .contains("The alias is duplicated with the name or alias of other measurement"));
+      }
+    } catch (final Exception e) {
       e.printStackTrace();
       fail();
     }

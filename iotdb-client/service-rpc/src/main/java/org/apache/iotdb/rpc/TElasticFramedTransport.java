@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.rpc;
 
 import org.apache.thrift.TConfiguration;
@@ -45,30 +46,38 @@ public class TElasticFramedTransport extends TTransport {
      */
     protected final int thriftDefaultBufferSize;
 
+    /**
+     * When copyBinary flag is true, the transport will copy the binary data from the underlying.
+     * This is a protection for the underlying buffer to be reused by the caller protocol.
+     */
+    protected final boolean copyBinary;
+
     public Factory() {
-      this(RpcUtils.THRIFT_DEFAULT_BUF_CAPACITY, RpcUtils.THRIFT_FRAME_MAX_SIZE);
+      this(RpcUtils.THRIFT_DEFAULT_BUF_CAPACITY, RpcUtils.THRIFT_FRAME_MAX_SIZE, true);
     }
 
-    public Factory(int thriftDefaultBufferSize, int thriftMaxFrameSize) {
+    public Factory(int thriftDefaultBufferSize, int thriftMaxFrameSize, boolean copyBinary) {
       this.thriftDefaultBufferSize = thriftDefaultBufferSize;
       this.thriftMaxFrameSize = thriftMaxFrameSize;
+      this.copyBinary = copyBinary;
     }
 
     @Override
     public TTransport getTransport(TTransport trans) {
-      return new TElasticFramedTransport(trans, thriftDefaultBufferSize, thriftMaxFrameSize);
+      return new TElasticFramedTransport(
+          trans, thriftDefaultBufferSize, thriftMaxFrameSize, copyBinary);
     }
   }
 
-  public TElasticFramedTransport(TTransport underlying) {
-    this(underlying, RpcUtils.THRIFT_DEFAULT_BUF_CAPACITY, RpcUtils.THRIFT_FRAME_MAX_SIZE);
-  }
-
   public TElasticFramedTransport(
-      TTransport underlying, int thriftDefaultBufferSize, int thriftMaxFrameSize) {
+      TTransport underlying,
+      int thriftDefaultBufferSize,
+      int thriftMaxFrameSize,
+      boolean copyBinary) {
     this.underlying = underlying;
     this.thriftDefaultBufferSize = thriftDefaultBufferSize;
     this.thriftMaxFrameSize = thriftMaxFrameSize;
+    this.copyBinary = copyBinary;
     readBuffer = new AutoScalingBufferReadTransport(thriftDefaultBufferSize);
     writeBuffer = new AutoScalingBufferWriteTransport(thriftDefaultBufferSize);
   }
@@ -80,6 +89,7 @@ public class TElasticFramedTransport extends TTransport {
   protected AutoScalingBufferReadTransport readBuffer;
   protected AutoScalingBufferWriteTransport writeBuffer;
   protected final byte[] i32buf = new byte[4];
+  private final boolean copyBinary;
 
   @Override
   public boolean isOpen() {
@@ -120,9 +130,18 @@ public class TElasticFramedTransport extends TTransport {
 
     if (size > thriftMaxFrameSize) {
       close();
-      throw new TTransportException(
-          TTransportException.CORRUPTED_DATA,
-          "Frame size (" + size + ") larger than protect max size (" + thriftMaxFrameSize + ")!");
+      if (size == 1195725856L || size == 1347375956L) {
+        // if someone sends HTTP GET/POST to this port, the size will be read as the following
+        throw new TTransportException(
+            TTransportException.CORRUPTED_DATA,
+            "Singular frame size ("
+                + size
+                + ") detected, you may be sending HTTP GET/POST requests to the Thrift-RPC port, please confirm that you are using the right port");
+      } else {
+        throw new TTransportException(
+            TTransportException.CORRUPTED_DATA,
+            "Frame size (" + size + ") larger than protect max size (" + thriftMaxFrameSize + ")!");
+      }
     }
     readBuffer.fill(underlying, size);
   }
@@ -163,5 +182,26 @@ public class TElasticFramedTransport extends TTransport {
 
   public TTransport getSocket() {
     return underlying;
+  }
+
+  @Override
+  public int getBytesRemainingInBuffer() {
+    // return -1 can make the caller protocol to copy binary data from the underlying transport.
+    return copyBinary ? -1 : readBuffer.getBytesRemainingInBuffer();
+  }
+
+  @Override
+  public byte[] getBuffer() {
+    return readBuffer.getBuffer();
+  }
+
+  @Override
+  public int getBufferPosition() {
+    return readBuffer.getBufferPosition();
+  }
+
+  @Override
+  public void consumeBuffer(int len) {
+    readBuffer.consumeBuffer(len);
   }
 }

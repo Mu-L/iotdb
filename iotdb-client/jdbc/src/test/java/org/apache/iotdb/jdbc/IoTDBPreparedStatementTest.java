@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.apache.iotdb.common.rpc.thrift.TSStatus;
@@ -36,7 +37,9 @@ import java.sql.Types;
 import java.time.ZoneId;
 
 import static org.junit.Assert.assertEquals;
-import static org.mockito.Matchers.any;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertThrows;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -86,17 +89,17 @@ public class IoTDBPreparedStatementTest {
     IoTDBPreparedStatement ps =
         new IoTDBPreparedStatement(connection, client, sessionId, sql, zoneId);
     ps.setString(1, "123");
-    ps.execute();
+    assertFalse(ps.execute());
   }
 
   @SuppressWarnings("resource")
-  @Test(expected = SQLException.class)
+  @Test
   public void unsetArgument() throws SQLException {
     String sql =
         "SELECT status, temperature FROM root.ln.wf01.wt01 WHERE temperature < 24 and time > ?";
     IoTDBPreparedStatement ps =
         new IoTDBPreparedStatement(connection, client, sessionId, sql, zoneId);
-    ps.execute();
+    assertThrows(SQLException.class, () -> ps.execute());
   }
 
   @SuppressWarnings("resource")
@@ -329,7 +332,7 @@ public class IoTDBPreparedStatementTest {
   @SuppressWarnings("resource")
   @Test
   public void testInsertStatement2() throws Exception {
-    String sql = "INSERT INTO root.ln.wf01.wt01(time,a,b,c,d,e,f) VALUES(?,?,?,?,?,?,?)";
+    String sql = "INSERT INTO root.ln.wf01.wt01(time,a,b,c,d,e,f,g,h) VALUES(?,?,?,?,?,?,?,?,?)";
 
     IoTDBPreparedStatement ps =
         new IoTDBPreparedStatement(connection, client, sessionId, sql, zoneId);
@@ -340,13 +343,15 @@ public class IoTDBPreparedStatementTest {
     ps.setFloat(5, 123.423f);
     ps.setDouble(6, -1323.0);
     ps.setString(7, "\"abc\"");
+    ps.setString(8, "abc");
+    ps.setString(9, "'abc'");
     ps.execute();
 
     ArgumentCaptor<TSExecuteStatementReq> argument =
         ArgumentCaptor.forClass(TSExecuteStatementReq.class);
     verify(client).executeStatementV2(argument.capture());
     assertEquals(
-        "INSERT INTO root.ln.wf01.wt01(time,a,b,c,d,e,f) VALUES(2017-11-01T00:13:00,false,123,123234345,123.423,-1323.0,\"abc\")",
+        "INSERT INTO root.ln.wf01.wt01(time,a,b,c,d,e,f,g,h) VALUES(2017-11-01T00:13:00,false,123,123234345,123.423,-1323.0,\"abc\",'abc','abc')",
         argument.getValue().getStatement());
   }
 
@@ -370,6 +375,29 @@ public class IoTDBPreparedStatementTest {
     verify(client).executeStatementV2(argument.capture());
     assertEquals(
         "INSERT INTO root.ln.wf01.wt02(time,a,b,c,d,e,f) VALUES(2020-01-01T10:10:10,false,123,123234345,123.423,-1323.0,\"abc\")",
+        argument.getValue().getStatement());
+  }
+
+  @Test
+  public void testInsertStatement4() throws Exception {
+    String sql = "INSERT INTO root.ln.wf01.wt02(time,a,b,c,d,e,f) VALUES(?,?,?,?,?,?,?)";
+
+    IoTDBPreparedStatement ps =
+        new IoTDBPreparedStatement(connection, client, sessionId, sql, zoneId);
+    ps.setObject(1, "2020-01-01 10:10:10", Types.TIMESTAMP, -1);
+    ps.setObject(2, false, Types.BOOLEAN, -1);
+    ps.setObject(3, 123, Types.INTEGER, -1);
+    ps.setObject(4, 123234345, Types.BIGINT);
+    ps.setObject(5, 123.423f, Types.FLOAT);
+    ps.setObject(6, -1323.0, Types.DOUBLE);
+    ps.setObject(7, "abc", Types.VARCHAR);
+    ps.execute();
+
+    ArgumentCaptor<TSExecuteStatementReq> argument =
+        ArgumentCaptor.forClass(TSExecuteStatementReq.class);
+    verify(client).executeStatementV2(argument.capture());
+    assertEquals(
+        "INSERT INTO root.ln.wf01.wt02(time,a,b,c,d,e,f) VALUES(2020-01-01T10:10:10,false,123,123234345,123.423,-1323.0,'abc')",
         argument.getValue().getStatement());
   }
 }

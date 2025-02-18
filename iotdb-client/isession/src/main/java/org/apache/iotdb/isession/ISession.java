@@ -16,6 +16,7 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.isession;
 
 import org.apache.iotdb.common.rpc.thrift.TAggregationType;
@@ -27,12 +28,13 @@ import org.apache.iotdb.rpc.IoTDBConnectionException;
 import org.apache.iotdb.rpc.StatementExecutionException;
 import org.apache.iotdb.service.rpc.thrift.TSBackupConfigurationResp;
 import org.apache.iotdb.service.rpc.thrift.TSConnectionInfoResp;
-import org.apache.iotdb.tsfile.file.metadata.enums.CompressionType;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSEncoding;
-import org.apache.iotdb.tsfile.write.record.Tablet;
 
 import org.apache.thrift.TException;
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.file.metadata.IDeviceID;
+import org.apache.tsfile.file.metadata.enums.CompressionType;
+import org.apache.tsfile.file.metadata.enums.TSEncoding;
+import org.apache.tsfile.write.record.Tablet;
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
@@ -59,7 +61,16 @@ public interface ISession extends AutoCloseable {
   void open(
       boolean enableRPCCompression,
       int connectionTimeoutInMs,
-      Map<String, TEndPoint> deviceIdToEndpoint)
+      Map<String, TEndPoint> deviceIdToEndpoint,
+      INodeSupplier nodeSupplier)
+      throws IoTDBConnectionException;
+
+  void open(
+      boolean enableRPCCompression,
+      int connectionTimeoutInMs,
+      Map<String, TEndPoint> deviceIdToEndpoint,
+      Map<IDeviceID, TEndPoint> tabletModelDeviceIdToEndpoint,
+      INodeSupplier nodeSupplier)
       throws IoTDBConnectionException;
 
   void close() throws IoTDBConnectionException;
@@ -70,17 +81,23 @@ public interface ISession extends AutoCloseable {
 
   void setTimeZoneOfSession(String zoneId);
 
-  /** @deprecated Use {@link #createDatabase(String)} instead. */
+  /**
+   * @deprecated Use {@link #createDatabase(String)} instead.
+   */
   @Deprecated
   void setStorageGroup(String storageGroup)
       throws IoTDBConnectionException, StatementExecutionException;
 
-  /** @deprecated Use {@link #deleteDatabase(String)} instead. */
+  /**
+   * @deprecated Use {@link #deleteDatabase(String)} instead.
+   */
   @Deprecated
   void deleteStorageGroup(String storageGroup)
       throws IoTDBConnectionException, StatementExecutionException;
 
-  /** @deprecated Use {@link #deleteDatabases(List)} instead. */
+  /**
+   * @deprecated Use {@link #deleteDatabases(List)} instead.
+   */
   @Deprecated
   void deleteStorageGroups(List<String> storageGroups)
       throws IoTDBConnectionException, StatementExecutionException;
@@ -96,6 +113,7 @@ public interface ISession extends AutoCloseable {
       String path, TSDataType dataType, TSEncoding encoding, CompressionType compressor)
       throws IoTDBConnectionException, StatementExecutionException;
 
+  @SuppressWarnings("squid:S107") // ignore Methods should not have too many parameters
   void createTimeseries(
       String path,
       TSDataType dataType,
@@ -116,6 +134,7 @@ public interface ISession extends AutoCloseable {
       List<String> measurementAliasList)
       throws IoTDBConnectionException, StatementExecutionException;
 
+  @SuppressWarnings("squid:S107") // ignore Methods should not have too many parameters
   void createAlignedTimeseries(
       String deviceId,
       List<String> measurements,
@@ -127,6 +146,7 @@ public interface ISession extends AutoCloseable {
       List<Map<String, String>> attributesList)
       throws IoTDBConnectionException, StatementExecutionException;
 
+  @SuppressWarnings("squid:S107") // ignore Methods should not have too many parameters
   void createMultiTimeseries(
       List<String> paths,
       List<TSDataType> dataTypes,
@@ -163,6 +183,10 @@ public interface ISession extends AutoCloseable {
       throws StatementExecutionException, IoTDBConnectionException;
 
   SessionDataSet executeLastDataQuery(List<String> paths)
+      throws StatementExecutionException, IoTDBConnectionException;
+
+  SessionDataSet executeLastDataQueryForOneDevice(
+      String db, String device, List<String> sensors, boolean isLegalPathNodes)
       throws StatementExecutionException, IoTDBConnectionException;
 
   SessionDataSet executeAggregationQuery(List<String> paths, List<TAggregationType> aggregations)
@@ -500,28 +524,46 @@ public interface ISession extends AutoCloseable {
 
   long getQueryTimeout();
 
+  /**
+   * @deprecated
+   */
   @Deprecated
   default SystemStatus getSystemStatus() {
     return SystemStatus.NORMAL;
   }
 
+  /**
+   * @deprecated
+   */
   @Deprecated
   default void createTimeseriesOfTemplateOnPath(String path)
       throws IoTDBConnectionException, StatementExecutionException {}
 
+  /**
+   * @deprecated
+   */
   @Deprecated
   default void deactivateTemplateOn(String templateName, String prefixPath)
       throws IoTDBConnectionException, StatementExecutionException {}
 
+  /**
+   * @deprecated
+   */
   @Deprecated
   default void operationSyncTransmit(ByteBuffer buffer)
       throws IoTDBConnectionException, StatementExecutionException {}
 
+  /**
+   * @deprecated
+   */
   @Deprecated
   default boolean isEnableCacheLeader() {
     return true;
   }
 
+  /**
+   * @deprecated
+   */
   @Deprecated
   default void setEnableCacheLeader(boolean enableCacheLeader) {}
 }

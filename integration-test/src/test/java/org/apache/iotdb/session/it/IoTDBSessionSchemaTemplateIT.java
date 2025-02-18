@@ -30,12 +30,12 @@ import org.apache.iotdb.rpc.IoTDBConnectionException;
 import org.apache.iotdb.rpc.StatementExecutionException;
 import org.apache.iotdb.rpc.TSStatusCode;
 import org.apache.iotdb.session.template.MeasurementNode;
-import org.apache.iotdb.tsfile.file.metadata.enums.CompressionType;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSEncoding;
-import org.apache.iotdb.tsfile.read.common.RowRecord;
 import org.apache.iotdb.util.AbstractSchemaIT;
 
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.file.metadata.enums.CompressionType;
+import org.apache.tsfile.file.metadata.enums.TSEncoding;
+import org.apache.tsfile.read.common.RowRecord;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -59,12 +59,13 @@ public class IoTDBSessionSchemaTemplateIT extends AbstractSchemaIT {
 
   private ISession session;
 
-  public IoTDBSessionSchemaTemplateIT(SchemaTestMode schemaTestMode) {
+  public IoTDBSessionSchemaTemplateIT(final SchemaTestMode schemaTestMode) {
     super(schemaTestMode);
   }
 
   @Before
   public void setUp() throws Exception {
+    setUpEnvironmentBeforeMethod();
     EnvFactory.getEnv().initClusterEnvironment();
     session = EnvFactory.getEnv().getSessionConnection();
   }
@@ -75,6 +76,7 @@ public class IoTDBSessionSchemaTemplateIT extends AbstractSchemaIT {
       session.close();
     }
     EnvFactory.getEnv().cleanClusterEnvironment();
+    tearDownEnvironment();
   }
 
   @Test
@@ -471,18 +473,22 @@ public class IoTDBSessionSchemaTemplateIT extends AbstractSchemaIT {
 
     Assert.assertTrue(expectedSeries.isEmpty());
 
-    deviceIds = Arrays.asList("root.db.v4.d1", "root.db.v4.d2");
-    timestamps = Arrays.asList(1L, 1L);
     measurements = Arrays.asList("a", "b", "c");
-    allMeasurements = Arrays.asList(measurements, measurements);
-    allTsDataTypes =
-        Arrays.asList(
-            Arrays.asList(TSDataType.FLOAT, TSDataType.FLOAT, TSDataType.TEXT),
-            Arrays.asList(TSDataType.DOUBLE, TSDataType.DOUBLE, TSDataType.INT32));
-    allValues = Arrays.asList(Arrays.asList(1f, 2f, "3"), Arrays.asList(1d, 2d, 3));
 
     try {
-      session.insertRecords(deviceIds, timestamps, allMeasurements, allTsDataTypes, allValues);
+      session.insertRecord(
+          "root.db.v4.d1",
+          1L,
+          measurements,
+          Arrays.asList(TSDataType.FLOAT, TSDataType.FLOAT, TSDataType.TEXT),
+          Arrays.asList(1f, 2f, "3"));
+      session.insertRecord(
+          "root.db.v4.d2",
+          1L,
+          measurements,
+          Arrays.asList(TSDataType.DOUBLE, TSDataType.DOUBLE, TSDataType.INT32),
+          Arrays.asList(1d, 2d, 3));
+      Assert.fail();
     } catch (StatementExecutionException e) {
       Assert.assertTrue(
           e.getMessage()

@@ -52,9 +52,15 @@ public class IoTDBSubStringFunctionIT {
         "CREATE TIMESERIES root.sg.s4 WITH DATATYPE=FLOAT, ENCODING=PLAIN",
         "CREATE TIMESERIES root.sg.s5 WITH DATATYPE=DOUBLE, ENCODING=PLAIN",
         "CREATE TIMESERIES root.sg.s6 WITH DATATYPE=BOOLEAN, ENCODING=PLAIN",
-        "INSERT INTO root.sg(timestamp,s1,s2,s3,s4,s5,s6) values(1, 'abcd', 1, 1, 1, 1, true)",
+        "CREATE TIMESERIES root.sg.s7 WITH DATATYPE=DATE, ENCODING=PLAIN",
+        "CREATE TIMESERIES root.sg.s8 WITH DATATYPE=TIMESTAMP, ENCODING=PLAIN",
+        "CREATE TIMESERIES root.sg.s9 WITH DATATYPE=STRING, ENCODING=PLAIN",
+        "CREATE TIMESERIES root.sg.s10 WITH DATATYPE=BLOB, ENCODING=PLAIN",
+        "INSERT INTO root.sg(timestamp,s1,s2,s3,s4,s5,s6,s7,s8,s9,s10) values(1, 'abcd', 1, 1, 1, 1, true, '2021-10-01', 1633046400000, 'abcd', 'abcd')",
         "INSERT INTO root.sg(timestamp,s1) values(2, 'test')",
         "INSERT INTO root.sg(timestamp,s1) values(3, 'abcdefg')",
+        "INSERT INTO root.sg(timestamp,s9) values(2, 'test')",
+        "INSERT INTO root.sg(timestamp,s9) values(3, 'abcdefg')",
         "flush"
       };
 
@@ -71,8 +77,8 @@ public class IoTDBSubStringFunctionIT {
   }
 
   private static void registerUDF() {
-    try (Connection connection = EnvFactory.getEnv().getConnection();
-        Statement statement = connection.createStatement()) {
+    try (final Connection connection = EnvFactory.getEnv().getConnection();
+        final Statement statement = connection.createStatement()) {
       statement.execute(
           "create function constvalue as 'org.apache.iotdb.db.query.udf.example.ConstValue'");
     } catch (SQLException throwable) {
@@ -82,7 +88,7 @@ public class IoTDBSubStringFunctionIT {
 
   @Test
   public void testNewTransformer() {
-    // normal
+    // Normal
     String[] expectedHeader =
         new String[] {
           "Time,root.sg.s1,SUBSTRING(root.sg.s1,1),SUBSTRING(root.sg.s1,1,3),SUBSTRING(root.sg.s1 FROM 1),SUBSTRING(root.sg.s1 FROM 1 FOR 3)"
@@ -98,7 +104,7 @@ public class IoTDBSubStringFunctionIT {
         expectedHeader,
         retArray);
 
-    // param 1 greater than input series length
+    // Param 1 greater than input series length
     expectedHeader =
         new String[] {
           "Time,root.sg.s1,SUBSTRING(root.sg.s1,11),SUBSTRING(root.sg.s1,11,13),SUBSTRING(root.sg.s1 FROM 11),SUBSTRING(root.sg.s1 FROM 11 FOR 13)"
@@ -111,11 +117,27 @@ public class IoTDBSubStringFunctionIT {
         "select s1,SUBSTRING(s1,11),SUBSTRING(s1,11,13),SUBSTRING(s1 from 11),SUBSTRING(s1 from 11 for 13) from root.sg",
         expectedHeader,
         retArray);
+
+    // Normal
+    String[] expectedHeader2 =
+        new String[] {
+          "Time,root.sg.s9,SUBSTRING(root.sg.s9,1),SUBSTRING(root.sg.s9,1,3),SUBSTRING(root.sg.s9 FROM 1),SUBSTRING(root.sg.s9 FROM 1 FOR 3)"
+        };
+    String[] retArray2 =
+        new String[] {
+          "1,abcd,abcd,abc,abcd,abc,",
+          "2,test,test,tes,test,tes,",
+          "3,abcdefg,abcdefg,abc,abcdefg,abc,",
+        };
+    resultSetEqualTest(
+        "select s9,SUBSTRING(s9,1),SUBSTRING(s9,1,3),SUBSTRING(s9 from 1),SUBSTRING(s9 from 1 for 3) from root.sg",
+        expectedHeader2,
+        retArray2);
   }
 
   @Test
   public void testOldTransformer() {
-    // normal
+    // Normal
     String[] expectedHeader =
         new String[] {
           "Time,root.sg.s1,change_points(root.sg.s1),SUBSTRING(root.sg.s1,1),SUBSTRING(root.sg.s1,1,3),SUBSTRING(root.sg.s1 FROM 1),SUBSTRING(root.sg.s1 FROM 1 FOR 3)"
@@ -131,7 +153,7 @@ public class IoTDBSubStringFunctionIT {
         expectedHeader,
         retArray);
 
-    // param 1 greater than input series length
+    // Param 1 greater than input series length
     expectedHeader =
         new String[] {
           "Time,root.sg.s1,change_points(root.sg.s1),SUBSTRING(root.sg.s1,11),SUBSTRING(root.sg.s1,11,13),SUBSTRING(root.sg.s1 FROM 11),SUBSTRING(root.sg.s1 FROM 11 FOR 13)"
@@ -144,77 +166,110 @@ public class IoTDBSubStringFunctionIT {
         "select s1,change_points(s1),SUBSTRING(s1,11),SUBSTRING(s1,11,13),SUBSTRING(s1 from 11),SUBSTRING(s1 from 11 for 13) from root.sg",
         expectedHeader,
         retArray);
+
+    // Normal
+    String[] expectedHeader2 =
+        new String[] {
+          "Time,root.sg.s9,change_points(root.sg.s1),SUBSTRING(root.sg.s9,1),SUBSTRING(root.sg.s9,1,3),SUBSTRING(root.sg.s9 FROM 1),SUBSTRING(root.sg.s9 FROM 1 FOR 3)"
+        };
+    String[] retArray2 =
+        new String[] {
+          "1,abcd,abcd,abcd,abc,abcd,abc,",
+          "2,test,test,test,tes,test,tes,",
+          "3,abcdefg,abcdefg,abcdefg,abc,abcdefg,abc,",
+        };
+    resultSetEqualTest(
+        "select s9,change_points(s1),SUBSTRING(s9,1),SUBSTRING(s9,1,3),SUBSTRING(s9 from 1),SUBSTRING(s9 from 1 for 3) from root.sg",
+        expectedHeader2,
+        retArray2);
   }
 
   @Test
   public void testRoundBooleanAndText() {
-    // using substring without start and end position.
+    // Using substring without start and end position.
     assertTestFail(
         "select s1,SUBSTRING(s1) from root.sg",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()
             + ": Argument exception,the scalar function [SUBSTRING] needs at least one argument,it must be a signed integer");
 
-    // wrong input type
+    // Wrong input type
     assertTestFail(
         "select SUBSTRING(s2,1,1) from root.**",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()
-            + ": Input series of Scalar function [SUBSTRING] only supports numeric data types [TEXT]");
+            + ": Unsupported data type INT32 for function SUBSTRING.");
 
-    // wrong input type
+    // Wrong input type
     assertTestFail(
         "select SUBSTRING(s3,1,1) from root.**",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()
-            + ": Input series of Scalar function [SUBSTRING] only supports numeric data types [TEXT]");
+            + ": Unsupported data type INT64 for function SUBSTRING.");
 
-    // wrong input type
+    // Wrong input type
     assertTestFail(
         "select SUBSTRING(s4,1,1) from root.**",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()
-            + ": Input series of Scalar function [SUBSTRING] only supports numeric data types [TEXT]");
+            + ": Unsupported data type FLOAT for function SUBSTRING.");
 
-    // wrong input type
+    // Wrong input type
     assertTestFail(
         "select SUBSTRING(s5,1,1) from root.**",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()
-            + ": Input series of Scalar function [SUBSTRING] only supports numeric data types [TEXT]");
+            + ": Unsupported data type DOUBLE for function SUBSTRING.");
 
-    // wrong input type
+    // Wrong input type
     assertTestFail(
         "select SUBSTRING(s6,1,1) from root.**",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()
-            + ": Input series of Scalar function [SUBSTRING] only supports numeric data types [TEXT]");
+            + ": Unsupported data type BOOLEAN for function SUBSTRING.");
 
-    // using substring with float start position
+    // Wrong input type
+    assertTestFail(
+        "select SUBSTRING(s7,1,1) from root.**",
+        TSStatusCode.SEMANTIC_ERROR.getStatusCode()
+            + ": Unsupported data type DATE for function SUBSTRING.");
+    // Wrong input type
+    assertTestFail(
+        "select SUBSTRING(s8,1,1) from root.**",
+        TSStatusCode.SEMANTIC_ERROR.getStatusCode()
+            + ": Unsupported data type TIMESTAMP for function SUBSTRING.");
+
+    // Wrong input type
+    assertTestFail(
+        "select SUBSTRING(s10,1,1) from root.**",
+        TSStatusCode.SEMANTIC_ERROR.getStatusCode()
+            + ": Unsupported data type BLOB for function SUBSTRING.");
+
+    // Using substring with float start position
     assertTestFail(
         "select SUBSTRING(s1,1.0,1) from root.**",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()
             + ": Argument exception,the scalar function [SUBSTRING] needs at least one argument,it must be a signed integer");
 
-    // using substring with float start and length
+    // Using substring with float start and length
     assertTestFail(
         "select SUBSTRING(s1,1.0,1.1) from root.**",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()
             + ": Argument exception,the scalar function [SUBSTRING] needs at least one argument,it must be a signed integer");
 
-    // negative characters length
+    // Negative characters length
     assertTestFail(
         "select SUBSTRING(s1,1,-10) from root.**",
-        TSStatusCode.EXECUTE_STATEMENT_ERROR.getStatusCode()
+        TSStatusCode.SEMANTIC_ERROR.getStatusCode()
             + ": Argument exception,the scalar function [SUBSTRING] beginPosition and length must be greater than 0");
 
-    // negative characters begin
+    // Negative characters begin
     assertTestFail(
         "select SUBSTRING(s1,-1,10) from root.**",
-        TSStatusCode.EXECUTE_STATEMENT_ERROR.getStatusCode()
+        TSStatusCode.SEMANTIC_ERROR.getStatusCode()
             + ": Argument exception,the scalar function [SUBSTRING] beginPosition and length must be greater than 0");
 
-    // negative characters begin
+    // Negative characters begin
     assertTestFail(
         "select SUBSTRING(s1 from -1 for 10) from root.**",
-        TSStatusCode.EXECUTE_STATEMENT_ERROR.getStatusCode()
+        TSStatusCode.SEMANTIC_ERROR.getStatusCode()
             + ": Argument exception,the scalar function [SUBSTRING] beginPosition and length must be greater than 0");
 
-    // negative characters begin
+    // Negative characters begin
     assertTestFail(
         "select SUBSTRING(s1,'start'='1','to'='2') from root.**",
         TSStatusCode.SEMANTIC_ERROR.getStatusCode()

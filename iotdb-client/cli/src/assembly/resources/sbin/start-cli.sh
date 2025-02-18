@@ -18,6 +18,11 @@
 # under the License.
 #
 
+# DEFAULT_SQL_DIALECT is used to set the default SQL dialect for the CLI.
+# empty value means using "tree".
+# Optional values: "table" or "tree"
+DEFAULT_SQL_DIALECT=
+
 # You can put your env variable here
 # export JAVA_HOME=$JAVA_HOME
 
@@ -49,11 +54,17 @@ PARAMETERS=""
 # 	PARAMETERS="-h 127.0.0.1 -p 6667 -u root -pw root"
 # fi
 
+# if DEFAULT_SQL_DIALECT is empty, set it to "tree"
+if [ -z "$DEFAULT_SQL_DIALECT" ]; then
+    DEFAULT_SQL_DIALECT="tree"
+fi
+
 # Added parameters when default parameters are missing
 user_param="-u root"
 passwd_param="-pw root"
 host_param="-h 127.0.0.1"
 port_param="-p 6667"
+sql_dialect_param="-sql_dialect $DEFAULT_SQL_DIALECT"
 
 while true; do
     case "$1" in
@@ -77,8 +88,12 @@ while true; do
             checkEnvVariables $2
             shift 2
         ;;
+        -sql_dialect)
+            sql_dialect_param="-sql_dialect $2"
+            shift 2
+        ;;
         --help)
-            echo "Usage: $0 [-h <ip>] [-p <port>] [-u <username>] [-pw <password>] [-D <name=value>] [-c] [-e sql] [-maxPRC <PRC size>]"
+            echo "Usage: $0 [-h <ip>] [-p <port>] [-u <username>] [-pw <password>] [-D <name=value>] [-c] [-e sql]"
             exit 0
         ;;
         "")
@@ -93,7 +108,7 @@ while true; do
     esac
 done
 
-PARAMETERS="$host_param $port_param $user_param $passwd_param $PARAMETERS"
+PARAMETERS="$host_param $port_param $user_param $passwd_param $sql_dialect_param $PARAMETERS"
 
 if [ -z "${IOTDB_INCLUDE}" ]; then
   #do nothing
@@ -110,9 +125,7 @@ IOTDB_CLI_CONF=${IOTDB_HOME}/conf
 
 MAIN_CLASS=org.apache.iotdb.cli.Cli
 
-for f in ${IOTDB_HOME}/lib/*.jar; do
-  CLASSPATH=${CLASSPATH}":"$f
-done
+CLASSPATH=${IOTDB_HOME}/lib/*
 
 
 if [ -n "$JAVA_HOME" ]; then
@@ -126,8 +139,28 @@ else
     JAVA=java
 fi
 
+# Determine the sort of JVM we'll be running on.
+java_ver_output=`"$JAVA" -version 2>&1`
+jvmver=`echo "$java_ver_output" | grep '[openjdk|java] version' | awk -F'"' 'NR==1 {print $2}' | cut -d\- -f1`
+JVM_VERSION=${jvmver%_*}
+
+version_arr=(${JVM_VERSION//./ })
+
+illegal_access_params=""
+#GC log path has to be defined here because it needs to access IOTDB_HOME
+if [ "${version_arr[0]}" = "1" ] ; then
+    # Java 8
+    MAJOR_VERSION=${version_arr[1]}
+else
+    #JDK 11 and others
+    MAJOR_VERSION=${version_arr[0]}
+    # Add argLine for Java 11 and above, due to [JEP 396: Strongly Encapsulate JDK Internals by Default] (https://openjdk.java.net/jeps/396)
+    illegal_access_params="$illegal_access_params --add-opens=java.base/java.lang=ALL-UNNAMED"
+fi
+
+
 set -o noglob
 iotdb_cli_params="-Dlogback.configurationFile=${IOTDB_CLI_CONF}/logback-cli.xml"
-exec "$JAVA" $iotdb_cli_params -cp "$CLASSPATH" "$MAIN_CLASS" $PARAMETERS
+exec "$JAVA" $iotdb_cli_params $illegal_access_params -cp "$CLASSPATH" "$MAIN_CLASS" $PARAMETERS
 
 exit $?

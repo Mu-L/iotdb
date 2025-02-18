@@ -22,9 +22,10 @@ package org.apache.iotdb.pipe.api.access;
 import org.apache.iotdb.pipe.api.exception.PipeParameterNotValidException;
 import org.apache.iotdb.pipe.api.type.Binary;
 import org.apache.iotdb.pipe.api.type.Type;
-import org.apache.iotdb.tsfile.read.common.Path;
 
-import java.io.IOException;
+import org.apache.tsfile.read.common.Path;
+
+import java.time.LocalDate;
 import java.util.List;
 
 public interface Row {
@@ -44,17 +45,28 @@ public interface Row {
    * @param columnIndex index of the specified column
    * @return the int value at the specified column in this row
    */
-  int getInt(int columnIndex);
+  int getInt(final int columnIndex);
+
+  /**
+   * Returns the localDate value at the specified column in this row.
+   *
+   * <p>Users need to ensure that the data type of the specified column is {@code Type.DATE}.
+   *
+   * @param columnIndex index of the specified column
+   * @return the int value at the specified column in this row
+   */
+  LocalDate getDate(final int columnIndex);
 
   /**
    * Returns the long value at the specified column in this row.
    *
-   * <p>Users need to ensure that the data type of the specified column is {@code Type.INT64}.
+   * <p>Users need to ensure that the data type of the specified column is {@code Type.INT64} or
+   * {@code Type.TIMESTAMP}.
    *
    * @param columnIndex index of the specified column
    * @return the long value at the specified column in this row
    */
-  long getLong(int columnIndex) throws IOException;
+  long getLong(final int columnIndex);
 
   /**
    * Returns the float value at the specified column in this row.
@@ -64,7 +76,7 @@ public interface Row {
    * @param columnIndex index of the specified column
    * @return the float value at the specified column in this row
    */
-  float getFloat(int columnIndex);
+  float getFloat(final int columnIndex);
 
   /**
    * Returns the double value at the specified column in this row.
@@ -74,7 +86,7 @@ public interface Row {
    * @param columnIndex index of the specified column
    * @return the double value at the specified column in this row
    */
-  double getDouble(int columnIndex);
+  double getDouble(final int columnIndex);
 
   /**
    * Returns the boolean value at the specified column in this row.
@@ -84,35 +96,37 @@ public interface Row {
    * @param columnIndex index of the specified column
    * @return the boolean value at the specified column in this row
    */
-  boolean getBoolean(int columnIndex);
+  boolean getBoolean(final int columnIndex);
 
   /**
    * Returns the Binary value at the specified column in this row.
    *
-   * <p>Users need to ensure that the data type of the specified column is {@code Type.TEXT}.
+   * <p>Users need to ensure that the data type of the specified column is {@code Type.TEXT}, {@code
+   * Type.BLOB} or {@code Type.STRING}.
    *
    * @param columnIndex index of the specified column
    * @return the Binary value at the specified column in this row
    */
-  Binary getBinary(int columnIndex);
+  Binary getBinary(final int columnIndex);
 
   /**
    * Returns the String value at the specified column in this row.
    *
-   * <p>Users need to ensure that the data type of the specified column is {@code Type.TEXT}.
+   * <p>Users need to ensure that the data type of the specified column is {@code Type.TEXT} or
+   * {@code Type.STRING}.
    *
    * @param columnIndex index of the specified column
    * @return the String value at the specified column in this row
    */
-  String getString(int columnIndex);
+  String getString(final int columnIndex);
 
   /**
-   * Returns the Object value at the specified column in this row.
+   * Returns the raw Object stored at the specified column in this row.
    *
    * @param columnIndex index of the specified column
    * @return the Object value at the specified column in this row
    */
-  Object getObject(int columnIndex);
+  Object getObject(final int columnIndex);
 
   /**
    * Returns the actual data type of the value at the specified column in this row.
@@ -120,7 +134,7 @@ public interface Row {
    * @param columnIndex index of the specified column
    * @return the actual data type of the value at the specified column in this row
    */
-  Type getDataType(int columnIndex);
+  Type getDataType(final int columnIndex);
 
   /**
    * Returns {@code true} if the value of the specified column is null.
@@ -128,33 +142,41 @@ public interface Row {
    * @param columnIndex index of the specified column
    * @return {@code true} if the value of the specified column is null
    */
-  boolean isNull(int columnIndex);
+  boolean isNull(final int columnIndex);
 
   /**
-   * Returns the number of columns (excluding the timestamp column)
+   * Returns the number of columns (excluding the timestamp column).
    *
    * @return the number of columns (excluding the timestamp column)
    */
   int size();
 
   /**
-   * Returns the actual column index of the given column name.
+   * Returns the actual column index of the given column (measurement) name.
    *
    * @param columnName the column name in Path form
-   * @throws PipeParameterNotValidException if the given column name is not existed in the Row
    * @return the actual column index of the given column name
+   * @throws PipeParameterNotValidException if the given column name is not existed in the Row
    */
-  int getColumnIndex(Path columnName) throws PipeParameterNotValidException;
+  int getColumnIndex(final Path columnName) throws PipeParameterNotValidException;
 
   /**
-   * Returns the column data types in the Row
+   * Returns the actual column (measurement) name of the given column index.
+   *
+   * @param columnIndex the column index
+   * @return the actual column (measurement) name of the given column index
+   */
+  String getColumnName(final int columnIndex);
+
+  /**
+   * Returns the column data types in the Row.
    *
    * @return the column data types in the Row
    */
   List<Type> getColumnTypes();
 
   /**
-   * Returns the device id of the Row
+   * Returns the device id of the Row.
    *
    * @return the device id of the Row
    */

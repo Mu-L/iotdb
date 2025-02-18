@@ -24,8 +24,8 @@ import org.apache.iotdb.it.framework.IoTDBTestRunner;
 import org.apache.iotdb.itbase.category.LocalStandaloneIT;
 
 import org.junit.AfterClass;
+import org.junit.Assert;
 import org.junit.BeforeClass;
-import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
@@ -34,6 +34,7 @@ import java.sql.Connection;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Locale;
 
 import static org.apache.iotdb.db.it.utils.TestUtils.resultSetEqualTest;
 import static org.apache.iotdb.itbase.constant.TestConstant.TIMESTAMP_STR;
@@ -96,6 +97,7 @@ public class DProfileIT {
                 (int) Math.floor(x + Math.random() * y % (y - x + 1))));
         statement.execute(
             (String.format(
+                Locale.ENGLISH,
                 "insert into root.vehicle.d2(timestamp,s1,s2) values(%d,%f,%f)",
                 i * 1000,
                 x + Math.random() * y % (y - x + 1),
@@ -134,7 +136,6 @@ public class DProfileIT {
           "create function segment as 'org.apache.iotdb.library.dprofile.UDTFSegment'");
       statement.execute("create function skew as 'org.apache.iotdb.library.dprofile.UDAFSkew'");
       statement.execute("create function spread as 'org.apache.iotdb.library.dprofile.UDAFSpread'");
-      statement.execute("create function stddev as 'org.apache.iotdb.library.dprofile.UDAFStddev'");
       statement.execute("create function minmax as 'org.apache.iotdb.library.dprofile.UDTFMinMax'");
       statement.execute("create function zscore as 'org.apache.iotdb.library.dprofile.UDTFZScore'");
       statement.execute("create function spline as 'org.apache.iotdb.library.dprofile.UDTFSpline'");
@@ -147,6 +148,8 @@ public class DProfileIT {
           "create function timeliness as 'org.apache.iotdb.library.dquality.UDTFTimeliness'");
       statement.execute(
           "create function completeness as 'org.apache.iotdb.library.dquality.UDTFCompleteness'");
+      statement.execute(
+          "CREATE FUNCTION envelope AS 'org.apache.iotdb.library.frequency.UDFEnvelopeAnalysis'");
     } catch (SQLException throwable) {
       fail(throwable.getMessage());
     }
@@ -209,10 +212,9 @@ public class DProfileIT {
     }
   }
 
-  @Ignore // TODO: This test case failed, please check the function implementation
   @Test
-  public void testMad1() {
-    String sqlStr = "select mad(d1.s1) from root.vehicle";
+  public void testTimeliness1() {
+    String sqlStr = "select timeliness(d1.s1) from root.vehicle";
     try (Connection connection = EnvFactory.getEnv().getConnection();
         Statement statement = connection.createStatement()) {
       ResultSet resultSet = statement.executeQuery(sqlStr);
@@ -224,7 +226,7 @@ public class DProfileIT {
   }
 
   @Test
-  public void testMad2() {
+  public void testTimeliness2() {
     String sqlStr = "select timeliness(d2.s2) from root.vehicle";
     try (Connection connection = EnvFactory.getEnv().getConnection();
         Statement statement = connection.createStatement()) {
@@ -367,32 +369,6 @@ public class DProfileIT {
   }
 
   @Test
-  public void testSddev1() {
-    String sqlStr = "select stddev(d1.s2) from root.vehicle";
-    try (Connection connection = EnvFactory.getEnv().getConnection();
-        Statement statement = connection.createStatement()) {
-      ResultSet resultSet = statement.executeQuery(sqlStr);
-      resultSet.next();
-      Object result = resultSet.getObject(2);
-    } catch (SQLException throwable) {
-      fail(throwable.getMessage());
-    }
-  }
-
-  @Test
-  public void testStddev2() {
-    String sqlStr = "select stddev(d2.s2) from root.vehicle";
-    try (Connection connection = EnvFactory.getEnv().getConnection();
-        Statement statement = connection.createStatement()) {
-      ResultSet resultSet = statement.executeQuery(sqlStr);
-      resultSet.next();
-      Object result = resultSet.getObject(2);
-    } catch (SQLException throwable) {
-      fail(throwable.getMessage());
-    }
-  }
-
-  @Test
   public void testACF1() {
     String sqlStr = "select acf(d2.s2) from root.vehicle";
     try (Connection connection = EnvFactory.getEnv().getConnection();
@@ -429,8 +405,10 @@ public class DProfileIT {
   public void testHistogram1() {
     String sqlStr =
         String.format(
+            Locale.ENGLISH,
             "select histogram(d1.s1,'min'='%f','max'='%f','count'='20') from root.vehicle",
-            -100d, 100d);
+            -100d,
+            100d);
     try (Connection connection = EnvFactory.getEnv().getConnection();
         Statement statement = connection.createStatement()) {
       ResultSet resultSet = statement.executeQuery(sqlStr);
@@ -442,7 +420,11 @@ public class DProfileIT {
   @Test
   public void testMinMax1() {
     String sqlStr =
-        String.format("select minmax(d2.s2,'min'='%f','max'='%f') from root.vehicle", -100d, 100d);
+        String.format(
+            Locale.ENGLISH,
+            "select minmax(d2.s2,'min'='%f','max'='%f') from root.vehicle",
+            -100d,
+            100d);
     try (Connection connection = EnvFactory.getEnv().getConnection();
         Statement statement = connection.createStatement()) {
       ResultSet resultSet = statement.executeQuery(sqlStr);
@@ -517,10 +499,9 @@ public class DProfileIT {
     }
   }
 
-  @Ignore // TODO: This test case failed, please check the function implementation
   @Test
   public void testSample1() {
-    String sqlStr = "select resample(d2.s1, 'method'='reservoir','k'='5') from root.vehicle";
+    String sqlStr = "select sample(d2.s1, 'method'='reservoir','k'='5') from root.vehicle";
     try (Connection connection = EnvFactory.getEnv().getConnection();
         Statement statement = connection.createStatement()) {
       ResultSet resultSet = statement.executeQuery(sqlStr);
@@ -529,10 +510,9 @@ public class DProfileIT {
     }
   }
 
-  @Ignore // TODO: This test case failed, please check the function implementation
   @Test
   public void testsample2() {
-    String sqlStr = "select resample(d1.s2, 'method'='isometric','k'='5') from root.vehicle";
+    String sqlStr = "select sample(d1.s2, 'method'='isometric','k'='5') from root.vehicle";
     try (Connection connection = EnvFactory.getEnv().getConnection();
         Statement statement = connection.createStatement()) {
       ResultSet resultSet = statement.executeQuery(sqlStr);
@@ -591,6 +571,21 @@ public class DProfileIT {
     try (Connection connection = EnvFactory.getEnv().getConnection();
         Statement statement = connection.createStatement()) {
       ResultSet resultSet = statement.executeQuery(sqlStr);
+    } catch (SQLException throwable) {
+      fail(throwable.getMessage());
+    }
+  }
+
+  @Test
+  public void testEnvelope() {
+    String sqlStr = "select envelope(s1,'frequency'='10') from root.**";
+    try (Connection connection = EnvFactory.getEnv().getConnection();
+        Statement statement = connection.createStatement()) {
+      ResultSet resultSet = statement.executeQuery(sqlStr);
+      while (resultSet.next()) {
+        double result = resultSet.getDouble(2);
+        Assert.assertEquals(1.4365, result, 0.01);
+      }
     } catch (SQLException throwable) {
       fail(throwable.getMessage());
     }

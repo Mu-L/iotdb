@@ -38,7 +38,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 
-// Todo: settle does not support mpp currently.
+// Todo: settle does not support queryengine currently.
 @Ignore
 @RunWith(IoTDBTestRunner.class)
 @Category({LocalStandaloneIT.class, ClusterIT.class})
@@ -56,7 +56,7 @@ public class IoTDBSettleIT {
   @AfterClass
   public static void tearDown() throws Exception {
     close();
-    EnvFactory.getEnv().initClusterEnvironment();
+    EnvFactory.getEnv().cleanClusterEnvironment();
   }
 
   @Test

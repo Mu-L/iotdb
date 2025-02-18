@@ -73,24 +73,24 @@ public class IoTDBExtendTemplateIT extends AbstractSchemaIT {
       // create database
       statement.execute("CREATE DATABASE root.db");
 
-      // create schema template
+      // create device template
       statement.execute(
-          "CREATE SCHEMA TEMPLATE t1 (s1 INT64 ENCODING=PLAIN, s2 DOUBLE ENCODING=RLE)");
+          "CREATE DEVICE TEMPLATE t1 (s1 INT64 ENCODING=PLAIN, s2 DOUBLE ENCODING=RLE)");
 
-      statement.execute("SET SCHEMA TEMPLATE t1 to root.db");
+      statement.execute("SET DEVICE TEMPLATE t1 to root.db");
 
-      statement.execute("CREATE TIMESERIES USING SCHEMA TEMPLATE on root.db.d1");
+      statement.execute("CREATE TIMESERIES USING DEVICE TEMPLATE on root.db.d1");
 
       statement.execute(
-          "ALTER SCHEMA TEMPLATE t1 ADD(s3 INT64 ENCODING=RLE, s4 DOUBLE ENCODING=GORILLA)");
+          "ALTER DEVICE TEMPLATE t1 ADD(s3 INT64 ENCODING=RLE, s4 DOUBLE ENCODING=GORILLA)");
 
       try {
         statement.execute(
-            "ALTER SCHEMA TEMPLATE t1 ADD(s5 INT64 ENCODING=RLE, s5 DOUBLE ENCODING=GORILLA)");
+            "ALTER DEVICE TEMPLATE t1 ADD(s5 INT64 ENCODING=RLE, s5 DOUBLE ENCODING=GORILLA)");
       } catch (SQLException e) {
         Assert.assertTrue(
             e.getMessage()
-                .contains("Duplicated measurement [s5] in schema template alter request"));
+                .contains("Duplicated measurement [s5] in device template alter request"));
       }
 
       String[] sqls =
@@ -101,10 +101,10 @@ public class IoTDBExtendTemplateIT extends AbstractSchemaIT {
           new Set[] {
             new HashSet<>(
                 Arrays.asList(
-                    "root.db.d1.s1,null,root.db,INT64,PLAIN,SNAPPY,null,null,null,null,,",
-                    "root.db.d1.s2,null,root.db,DOUBLE,RLE,SNAPPY,null,null,null,null,,",
-                    "root.db.d1.s3,null,root.db,INT64,RLE,SNAPPY,null,null,null,null,,",
-                    "root.db.d1.s4,null,root.db,DOUBLE,GORILLA,SNAPPY,null,null,null,null,,"))
+                    "root.db.d1.s1,null,root.db,INT64,PLAIN,LZ4,null,null,null,null,BASE,",
+                    "root.db.d1.s2,null,root.db,DOUBLE,RLE,LZ4,null,null,null,null,BASE,",
+                    "root.db.d1.s3,null,root.db,INT64,RLE,LZ4,null,null,null,null,BASE,",
+                    "root.db.d1.s4,null,root.db,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,"))
           };
       for (int n = 0; n < sqls.length; n++) {
         String sql = sqls[n];
@@ -136,11 +136,11 @@ public class IoTDBExtendTemplateIT extends AbstractSchemaIT {
       // create database
       statement.execute("CREATE DATABASE root.db");
 
-      // create schema template
+      // create device template
       statement.execute(
-          "CREATE SCHEMA TEMPLATE t1 (s1 INT64 ENCODING=PLAIN, s2 DOUBLE ENCODING=RLE)");
+          "CREATE DEVICE TEMPLATE t1 (s1 INT64 ENCODING=PLAIN, s2 DOUBLE ENCODING=RLE)");
 
-      statement.execute("SET SCHEMA TEMPLATE t1 to root.db");
+      statement.execute("SET DEVICE TEMPLATE t1 to root.db");
 
       statement.execute("INSERT INTO root.db.d1(time, s1, s3) values(1, 1, 1)");
       statement.execute("INSERT INTO root.db.d2(time, s4, s5) values(1, 1, 1)");
@@ -154,18 +154,18 @@ public class IoTDBExtendTemplateIT extends AbstractSchemaIT {
           new Set[] {
             new HashSet<>(
                 Arrays.asList(
-                    "root.db.d1.s1,null,root.db,INT64,PLAIN,SNAPPY,null,null,null,null,,",
-                    "root.db.d1.s2,null,root.db,DOUBLE,RLE,SNAPPY,null,null,null,null,,",
-                    "root.db.d1.s3,null,root.db,FLOAT,GORILLA,SNAPPY,null,null,null,null,,",
-                    "root.db.d1.s4,null,root.db,FLOAT,GORILLA,SNAPPY,null,null,null,null,,",
-                    "root.db.d1.s5,null,root.db,FLOAT,GORILLA,SNAPPY,null,null,null,null,,",
-                    "root.db.d2.s1,null,root.db,INT64,PLAIN,SNAPPY,null,null,null,null,,",
-                    "root.db.d2.s2,null,root.db,DOUBLE,RLE,SNAPPY,null,null,null,null,,",
-                    "root.db.d2.s3,null,root.db,FLOAT,GORILLA,SNAPPY,null,null,null,null,,",
-                    "root.db.d2.s4,null,root.db,FLOAT,GORILLA,SNAPPY,null,null,null,null,,",
-                    "root.db.d2.s5,null,root.db,FLOAT,GORILLA,SNAPPY,null,null,null,null,,",
-                    "root.db1.d1.s2,null,root.db1,FLOAT,GORILLA,SNAPPY,null,null,null,null,,",
-                    "root.db1.d1.s3,null,root.db1,FLOAT,GORILLA,SNAPPY,null,null,null,null,,"))
+                    "root.db.d1.s1,null,root.db,INT64,PLAIN,LZ4,null,null,null,null,BASE,",
+                    "root.db.d1.s2,null,root.db,DOUBLE,RLE,LZ4,null,null,null,null,BASE,",
+                    "root.db.d1.s3,null,root.db,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,",
+                    "root.db.d1.s4,null,root.db,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,",
+                    "root.db.d1.s5,null,root.db,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,",
+                    "root.db.d2.s1,null,root.db,INT64,PLAIN,LZ4,null,null,null,null,BASE,",
+                    "root.db.d2.s2,null,root.db,DOUBLE,RLE,LZ4,null,null,null,null,BASE,",
+                    "root.db.d2.s3,null,root.db,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,",
+                    "root.db.d2.s4,null,root.db,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,",
+                    "root.db.d2.s5,null,root.db,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,",
+                    "root.db1.d1.s2,null,root.db1,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,",
+                    "root.db1.d1.s3,null,root.db1,DOUBLE,GORILLA,LZ4,null,null,null,null,BASE,"))
           };
       for (int n = 0; n < sqls.length; n++) {
         String sql = sqls[n];
@@ -197,11 +197,11 @@ public class IoTDBExtendTemplateIT extends AbstractSchemaIT {
       // create database
       statement.execute("CREATE DATABASE root.db");
 
-      // create schema template
+      // create device template
       statement.execute(
-          "CREATE SCHEMA TEMPLATE t1 (s1 INT64 ENCODING=PLAIN, s2 DOUBLE ENCODING=RLE)");
+          "CREATE DEVICE TEMPLATE t1 (s1 INT64 ENCODING=PLAIN, s2 DOUBLE ENCODING=RLE)");
 
-      statement.execute("SET SCHEMA TEMPLATE t1 to root.db");
+      statement.execute("SET DEVICE TEMPLATE t1 to root.db");
 
       statement.execute("INSERT INTO root.db.d1(time, s1, s2) values(1, 1, 1)");
 

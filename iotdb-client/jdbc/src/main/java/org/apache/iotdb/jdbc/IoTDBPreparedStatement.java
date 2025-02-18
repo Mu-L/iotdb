@@ -16,12 +16,14 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb.jdbc;
 
 import org.apache.iotdb.service.rpc.thrift.IClientRPCService.Iface;
-import org.apache.iotdb.tsfile.utils.Binary;
 
 import org.apache.thrift.TException;
+import org.apache.tsfile.common.conf.TSFileConfig;
+import org.apache.tsfile.utils.Binary;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -30,6 +32,7 @@ import java.io.Reader;
 import java.io.StringReader;
 import java.math.BigDecimal;
 import java.net.URL;
+import java.nio.charset.Charset;
 import java.sql.Array;
 import java.sql.Blob;
 import java.sql.Clob;
@@ -70,15 +73,28 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
   private final Map<Integer, String> parameters = new HashMap<>();
 
   IoTDBPreparedStatement(
+      IoTDBConnection connection,
+      Iface client,
+      Long sessionId,
+      String sql,
+      ZoneId zoneId,
+      Charset charset)
+      throws SQLException {
+    super(connection, client, sessionId, zoneId, charset);
+    this.sql = sql;
+  }
+
+  // Only for tests
+  IoTDBPreparedStatement(
       IoTDBConnection connection, Iface client, Long sessionId, String sql, ZoneId zoneId)
       throws SQLException {
-    super(connection, client, sessionId, zoneId);
+    super(connection, client, sessionId, zoneId, TSFileConfig.STRING_CHARSET);
     this.sql = sql;
   }
 
   @Override
   public void addBatch() throws SQLException {
-    throw new SQLException(METHOD_NOT_SUPPORTED_STRING);
+    super.addBatch(createCompleteSql(sql, parameters));
   }
 
   @Override
@@ -103,7 +119,7 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
 
   @Override
   public ResultSetMetaData getMetaData() throws SQLException {
-    throw new SQLException(METHOD_NOT_SUPPORTED_STRING);
+    return getResultSet().getMetaData();
   }
 
   @Override
@@ -256,7 +272,7 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
   @Override
   public void setBytes(int parameterIndex, byte[] x) throws SQLException {
     Binary binary = new Binary(x);
-    this.parameters.put(parameterIndex, binary.getStringValue());
+    this.parameters.put(parameterIndex, binary.getStringValue(TSFileConfig.STRING_CHARSET));
   }
 
   @Override
@@ -399,6 +415,11 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
     }
   }
 
+  @SuppressWarnings({
+    "squid:S3776",
+    "squid:S6541"
+  }) // ignore Cognitive Complexity of methods should not be too high
+  // ignore Methods should not perform too many tasks (aka Brain method)
   @Override
   public void setObject(int parameterIndex, Object parameterObj, int targetSqlType, int scale)
       throws SQLException {
@@ -507,6 +528,9 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
                 }
 
                 break;
+              default:
+                logger.error("No type was matched");
+                break;
             }
 
             break;
@@ -530,16 +554,19 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
           default:
             throw new SQLException(Constant.PARAMETER_SUPPORTED); //
         }
+      } catch (SQLException ex) {
+        throw ex;
       } catch (Exception ex) {
-        if (ex instanceof SQLException) {
-          throw (SQLException) ex;
-        }
-
         throw new SQLException(Constant.PARAMETER_SUPPORTED); //
       }
     }
   }
 
+  @SuppressWarnings({
+    "squid:S3776",
+    "squid:S6541"
+  }) // ignore Cognitive Complexity of methods should not be too high
+  // ignore Methods should not perform too many tasks (aka Brain method)
   private final String getDateTimePattern(String dt, boolean toTime) throws Exception {
     //
     // Special case
@@ -591,8 +618,8 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
     char c;
     char separator;
     StringReader reader = new StringReader(dt + " ");
-    ArrayList<Object[]> vec = new ArrayList<Object[]>();
-    ArrayList<Object[]> vecRemovelist = new ArrayList<Object[]>();
+    ArrayList<Object[]> vec = new ArrayList<>();
+    ArrayList<Object[]> vecRemovelist = new ArrayList<>();
     Object[] nv = new Object[3];
     Object[] v;
     nv[0] = Character.valueOf('y');
@@ -697,6 +724,8 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
     return format.toString();
   }
 
+  @SuppressWarnings({"squid:S3776", "squid:S3358"}) // ignore Ternary operators should not be nested
+  // ignore Cognitive Complexity of methods should not be too high
   private final char getSuccessor(char c, int n) {
     return ((c == 'y') && (n == 2))
         ? 'X'
@@ -727,6 +756,11 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
                                                         : 'W'))))))))))));
   }
 
+  @SuppressWarnings({
+    "squid:S3776",
+    "squid:S6541"
+  }) // ignore Cognitive Complexity of methods should not be too high
+  // ignore Methods should not perform too many tasks (aka Brain method)
   private void setNumericObject(
       int parameterIndex, Object parameterObj, int targetSqlType, int scale) throws SQLException {
     Number parameterAsNum;
@@ -834,6 +868,7 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
         }
 
         break;
+      default:
     }
   }
 
@@ -859,7 +894,15 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
 
   @Override
   public void setString(int parameterIndex, String x) {
-    this.parameters.put(parameterIndex, x);
+    // if the sql is an insert statement and the value is not a string literal, add single quotes
+    // The table model only supports single quotes, the tree model sql both single and double quotes
+    if (sql.trim().toUpperCase().startsWith("INSERT")
+        && !((x.startsWith("'") && x.endsWith("'"))
+            || ((x.startsWith("\"") && x.endsWith("\"")) && "tree".equals(getSqlDialect())))) {
+      this.parameters.put(parameterIndex, "'" + x + "'");
+    } else {
+      this.parameters.put(parameterIndex, x);
+    }
   }
 
   @Override
@@ -881,7 +924,8 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
       }
       setLong(parameterIndex, time);
     } catch (TException e) {
-      e.printStackTrace();
+      logger.error(
+          String.format("set time error when iotdb prepared statement :%s ", e.getMessage()));
     }
   }
 
@@ -913,7 +957,8 @@ public class IoTDBPreparedStatement extends IoTDBStatement implements PreparedSt
       this.parameters.put(
           parameterIndex, zonedDateTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
     } catch (TException e) {
-      e.printStackTrace();
+      logger.error(
+          String.format("set time error when iotdb prepared statement :%s ", e.getMessage()));
     }
   }
 

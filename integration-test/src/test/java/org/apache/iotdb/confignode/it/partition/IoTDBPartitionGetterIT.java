@@ -22,7 +22,9 @@ import org.apache.iotdb.common.rpc.thrift.TConsensusGroupId;
 import org.apache.iotdb.common.rpc.thrift.TConsensusGroupType;
 import org.apache.iotdb.common.rpc.thrift.TSStatus;
 import org.apache.iotdb.common.rpc.thrift.TSeriesPartitionSlot;
+import org.apache.iotdb.common.rpc.thrift.TTimePartitionSlot;
 import org.apache.iotdb.commons.client.sync.SyncConfigNodeIServiceClient;
+import org.apache.iotdb.commons.schema.SchemaConstant;
 import org.apache.iotdb.confignode.it.utils.ConfigNodeTestUtils;
 import org.apache.iotdb.confignode.rpc.thrift.TCountTimeSlotListReq;
 import org.apache.iotdb.confignode.rpc.thrift.TCountTimeSlotListResp;
@@ -30,6 +32,7 @@ import org.apache.iotdb.confignode.rpc.thrift.TDataNodeInfo;
 import org.apache.iotdb.confignode.rpc.thrift.TDataPartitionReq;
 import org.apache.iotdb.confignode.rpc.thrift.TDataPartitionTableResp;
 import org.apache.iotdb.confignode.rpc.thrift.TDatabaseSchema;
+import org.apache.iotdb.confignode.rpc.thrift.TGetDatabaseReq;
 import org.apache.iotdb.confignode.rpc.thrift.TGetRegionIdReq;
 import org.apache.iotdb.confignode.rpc.thrift.TGetRegionIdResp;
 import org.apache.iotdb.confignode.rpc.thrift.TGetSeriesSlotListReq;
@@ -49,6 +52,8 @@ import org.apache.iotdb.it.framework.IoTDBTestRunner;
 import org.apache.iotdb.itbase.category.ClusterIT;
 import org.apache.iotdb.rpc.TSStatusCode;
 
+import org.apache.tsfile.file.metadata.IDeviceID;
+import org.apache.tsfile.file.metadata.IDeviceID.Factory;
 import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.BeforeClass;
@@ -58,6 +63,7 @@ import org.junit.runner.RunWith;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.io.ByteArrayOutputStream;
 import java.nio.ByteBuffer;
 import java.util.Arrays;
 import java.util.HashSet;
@@ -326,8 +332,10 @@ public class IoTDBPartitionGetterIT {
 
         // Check the number of DataRegionGroup.
         // And this number should be greater than or equal to leastDataRegionGroupNum
-        TShowDatabaseResp showStorageGroupResp =
-            client.showDatabase(Arrays.asList(storageGroup.split("\\.")));
+        TGetDatabaseReq req =
+            new TGetDatabaseReq(
+                Arrays.asList(storageGroup.split("\\.")), SchemaConstant.ALL_MATCH_SCOPE_BINARY);
+        TShowDatabaseResp showStorageGroupResp = client.showDatabase(req);
         Assert.assertTrue(
             showStorageGroupResp.getDatabaseInfoMap().get(storageGroup).getDataRegionNum()
                 >= leastDataRegionGroupNum);
@@ -340,10 +348,12 @@ public class IoTDBPartitionGetterIT {
     final String sg0 = "root.sg0";
     final String sg1 = "root.sg1";
 
-    final String d00 = sg0 + ".d0.s";
-    final String d01 = sg0 + ".d1.s";
-    final String d10 = sg1 + ".d0.s";
-    final String d11 = sg1 + ".d1.s";
+    final IDeviceID d00 = Factory.DEFAULT_FACTORY.create(sg0 + ".d0.s");
+    final IDeviceID d01 = Factory.DEFAULT_FACTORY.create(sg0 + ".d1.s");
+    final IDeviceID d10 = Factory.DEFAULT_FACTORY.create(sg1 + ".d0.s");
+    final IDeviceID d11 = Factory.DEFAULT_FACTORY.create(sg1 + ".d1.s");
+
+    IDeviceID[] devices = new IDeviceID[] {d00, d01, d10, d11};
 
     try (SyncConfigNodeIServiceClient client =
         (SyncConfigNodeIServiceClient) EnvFactory.getEnv().getLeaderConfigNodeConnection()) {
@@ -355,16 +365,33 @@ public class IoTDBPartitionGetterIT {
       // Get RegionIds of specified database and timestamp
       getRegionIdReq = new TGetRegionIdReq(TConsensusGroupType.DataRegion);
       getRegionIdReq.setDatabase(sg0);
-      getRegionIdReq.setTimeStamp(0);
+      getRegionIdReq.setStartTimeSlot(new TTimePartitionSlot(0));
+      getRegionIdReq.setEndTimeSlot(new TTimePartitionSlot(0));
       getRegionIdResp = client.getRegionId(getRegionIdReq);
       Assert.assertEquals(
           TSStatusCode.SUCCESS_STATUS.getStatusCode(), getRegionIdResp.status.getCode());
 
-      //           Get RegionId with wrong PartitionSlot
+      // Get RegionId with negative timestamp
+      getRegionIdReq.setStartTimeSlot(new TTimePartitionSlot(-100));
+      getRegionIdReq.setEndTimeSlot(new TTimePartitionSlot(-1));
+      getRegionIdResp = client.getRegionId(getRegionIdReq);
+      Assert.assertEquals(
+          TSStatusCode.SUCCESS_STATUS.getStatusCode(), getRegionIdResp.status.getCode());
+      Assert.assertTrue(getRegionIdResp.getDataRegionIdList().isEmpty());
+
+      // Get RegionId with Disjoint timestampRange
+      getRegionIdReq.setStartTimeSlot(new TTimePartitionSlot(Long.MAX_VALUE));
+      getRegionIdReq.setEndTimeSlot(new TTimePartitionSlot(0));
+      Assert.assertEquals(
+          TSStatusCode.SUCCESS_STATUS.getStatusCode(), getRegionIdResp.status.getCode());
+      Assert.assertTrue(getRegionIdResp.getDataRegionIdList().isEmpty());
+
+      //   Get schema RegionIds with specified database and timestamp will ignore timestamp and
+      // return success.
       getRegionIdReq.setType(TConsensusGroupType.SchemaRegion);
       getRegionIdResp = client.getRegionId(getRegionIdReq);
       Assert.assertEquals(
-          TSStatusCode.ILLEGAL_PARAMETER.getStatusCode(), getRegionIdResp.status.getCode());
+          TSStatusCode.SUCCESS_STATUS.getStatusCode(), getRegionIdResp.status.getCode());
 
       // Get all RegionIds within database
       for (int i = 0; i < storageGroupNum; i++) {
@@ -376,24 +403,47 @@ public class IoTDBPartitionGetterIT {
             TSStatusCode.SUCCESS_STATUS.getStatusCode(), getRegionIdResp.status.getCode());
         Set<TConsensusGroupId> idSet = new HashSet<>(getRegionIdResp.getDataRegionIdList());
         Set<TConsensusGroupId> subSets = new HashSet<>();
+
+        // Get RegionId with an equivalent query。
         for (long j = 0; j < testTimePartitionSlotsNum; j++) {
           TGetRegionIdReq subReq = new TGetRegionIdReq(TConsensusGroupType.DataRegion);
           subReq.setDatabase(curSg);
-          subReq.setTimeStamp(j * testTimePartitionInterval);
+          subReq.setStartTimeSlot(new TTimePartitionSlot(j * testTimePartitionInterval));
+          subReq.setEndTimeSlot(new TTimePartitionSlot(j * testTimePartitionInterval));
           TGetRegionIdResp subResp = client.getRegionId(subReq);
           Assert.assertEquals(
               TSStatusCode.SUCCESS_STATUS.getStatusCode(), subResp.getStatus().getCode());
           subSets.addAll(subResp.getDataRegionIdList());
         }
-
         Assert.assertEquals(idSet, subSets);
+
+        // Get RegionId with time range query
+        TGetRegionIdReq rangeReq = new TGetRegionIdReq(TConsensusGroupType.DataRegion);
+        rangeReq.setDatabase(curSg);
+        rangeReq.setStartTimeSlot(new TTimePartitionSlot(0L));
+        rangeReq.setEndTimeSlot(
+            new TTimePartitionSlot(testTimePartitionSlotsNum * testTimePartitionInterval));
+        TGetRegionIdResp rangeResp = client.getRegionId(rangeReq);
+        Assert.assertEquals(
+            TSStatusCode.SUCCESS_STATUS.getStatusCode(), rangeResp.getStatus().getCode());
+        Set<TConsensusGroupId> rangeSets = new HashSet<>(getRegionIdResp.getDataRegionIdList());
+        Assert.assertEquals(idSet, rangeSets);
+      }
+
+      // Get RegionId with device
+
+      TGetRegionIdReq deviceReq = new TGetRegionIdReq(TConsensusGroupType.DataRegion);
+      for (IDeviceID device : devices) {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        device.serialize(baos);
+        deviceReq.setDevice(baos.toByteArray());
+        TGetRegionIdResp resp = client.getRegionId(deviceReq);
+        Assert.assertEquals(
+            TSStatusCode.SUCCESS_STATUS.getStatusCode(), resp.getStatus().getCode());
+        Assert.assertFalse(resp.getDataRegionIdList().isEmpty());
       }
 
       // Get RegionId of SchemaPartition
-      ByteBuffer buffer = generatePatternTreeBuffer(new String[] {d00, d01, d10, d11});
-      TSchemaPartitionReq schemaPartitionReq = new TSchemaPartitionReq(buffer);
-      TSchemaPartitionTableResp schemaPartitionTableResp =
-          client.getSchemaPartitionTable(schemaPartitionReq);
       getRegionIdReq.setDatabase(sg0);
       getRegionIdReq.setType(TConsensusGroupType.SchemaRegion);
       getRegionIdResp = client.getRegionId(getRegionIdReq);
@@ -487,7 +537,7 @@ public class IoTDBPartitionGetterIT {
           TSStatusCode.SUCCESS_STATUS.getStatusCode(), nodeManagementResp.getStatus().getCode());
       Assert.assertEquals(storageGroupNum, nodeManagementResp.getMatchedNodeSize());
       Assert.assertNotNull(nodeManagementResp.getSchemaRegionMap());
-      Assert.assertEquals(2, nodeManagementResp.getSchemaRegionMapSize());
+      Assert.assertEquals(0, nodeManagementResp.getSchemaRegionMapSize());
     }
   }
 }

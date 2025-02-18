@@ -20,7 +20,8 @@
 package org.apache.iotdb.trigger.api;
 
 import org.apache.iotdb.trigger.api.enums.FailureStrategy;
-import org.apache.iotdb.tsfile.write.record.Tablet;
+
+import org.apache.tsfile.write.record.Tablet;
 
 public interface Trigger {
 
@@ -67,6 +68,8 @@ public interface Trigger {
   }
 
   /**
+   * This method will be called when a trigger is fired.
+   *
    * @param tablet see {@link Tablet} for detailed information of data structure. Data that is
    *     inserted will be constructed as a Tablet and you can define process logic with {@link
    *     Tablet}.

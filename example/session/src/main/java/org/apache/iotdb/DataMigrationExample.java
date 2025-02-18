@@ -16,17 +16,23 @@
  * specific language governing permissions and limitations
  * under the License.
  */
+
 package org.apache.iotdb;
 
+import org.apache.iotdb.commons.path.MeasurementPath;
 import org.apache.iotdb.commons.path.PartialPath;
 import org.apache.iotdb.isession.SessionDataSet.DataIterator;
 import org.apache.iotdb.isession.pool.SessionDataSetWrapper;
 import org.apache.iotdb.rpc.IoTDBConnectionException;
 import org.apache.iotdb.rpc.StatementExecutionException;
 import org.apache.iotdb.session.pool.SessionPool;
-import org.apache.iotdb.tsfile.file.metadata.enums.TSDataType;
-import org.apache.iotdb.tsfile.write.record.Tablet;
-import org.apache.iotdb.tsfile.write.schema.MeasurementSchema;
+
+import org.apache.tsfile.enums.TSDataType;
+import org.apache.tsfile.write.record.Tablet;
+import org.apache.tsfile.write.schema.IMeasurementSchema;
+import org.apache.tsfile.write.schema.MeasurementSchema;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -45,6 +51,8 @@ import java.util.concurrent.Future;
  */
 public class DataMigrationExample {
 
+  private static final Logger LOGGER = LoggerFactory.getLogger(DataMigrationExample.class);
+
   // used to read data from the source IoTDB
   private static SessionPool readerPool;
   // used to write data into the destination IoTDB
@@ -53,10 +61,13 @@ public class DataMigrationExample {
   private static final int CONCURRENCY = 5;
 
   public static void main(String[] args)
-      throws IoTDBConnectionException, StatementExecutionException, ExecutionException,
+      throws IoTDBConnectionException,
+          StatementExecutionException,
+          ExecutionException,
           InterruptedException {
 
-    ExecutorService executorService = Executors.newFixedThreadPool(CONCURRENCY + 1);
+    // the thread used for dataMigration must be smaller than session pool size
+    ExecutorService executorService = Executors.newFixedThreadPool(CONCURRENCY);
 
     String path = "root.**";
 
@@ -72,9 +83,9 @@ public class DataMigrationExample {
     int total;
     if (deviceIter.next()) {
       total = deviceIter.getInt(1);
-      System.out.println("Total devices: " + total);
+      LOGGER.info("Total devices: {}", total);
     } else {
-      System.out.println("Can not get devices schema");
+      LOGGER.error("Can not get devices schema");
       System.exit(1);
     }
     readerPool.closeResultSet(deviceDataSet);
@@ -121,62 +132,70 @@ public class DataMigrationExample {
         DataIterator dataIter = dataSet.iterator();
         List<String> columnNameList = dataIter.getColumnNameList();
         List<String> columnTypeList = dataIter.getColumnTypeList();
-        List<MeasurementSchema> schemaList = new ArrayList<>();
+        List<IMeasurementSchema> schemaList = new ArrayList<>();
         for (int j = 1; j < columnNameList.size(); j++) {
-          PartialPath currentPath = new PartialPath(columnNameList.get(j));
+          PartialPath currentPath = new MeasurementPath(columnNameList.get(j));
           schemaList.add(
               new MeasurementSchema(
                   currentPath.getMeasurement(), TSDataType.valueOf(columnTypeList.get(j))));
         }
         tablet = new Tablet(device, schemaList, 300000);
         while (dataIter.next()) {
-          int row = tablet.rowSize++;
-          tablet.timestamps[row] = dataIter.getLong(1);
+          int row = tablet.getRowSize();
+          tablet.addTimestamp(row, dataIter.getLong(1));
           for (int j = 0; j < schemaList.size(); ++j) {
             if (dataIter.isNull(j + 2)) {
-              tablet.addValue(schemaList.get(j).getMeasurementId(), row, null);
+              tablet.addValue(schemaList.get(j).getMeasurementName(), row, null);
               continue;
             }
             switch (schemaList.get(j).getType()) {
               case BOOLEAN:
                 tablet.addValue(
-                    schemaList.get(j).getMeasurementId(), row, dataIter.getBoolean(j + 2));
+                    schemaList.get(j).getMeasurementName(), row, dataIter.getBoolean(j + 2));
                 break;
               case INT32:
-                tablet.addValue(schemaList.get(j).getMeasurementId(), row, dataIter.getInt(j + 2));
+                tablet.addValue(
+                    schemaList.get(j).getMeasurementName(), row, dataIter.getInt(j + 2));
                 break;
               case INT64:
-                tablet.addValue(schemaList.get(j).getMeasurementId(), row, dataIter.getLong(j + 2));
+              case TIMESTAMP:
+                tablet.addValue(
+                    schemaList.get(j).getMeasurementName(), row, dataIter.getLong(j + 2));
                 break;
               case FLOAT:
                 tablet.addValue(
-                    schemaList.get(j).getMeasurementId(), row, dataIter.getFloat(j + 2));
+                    schemaList.get(j).getMeasurementName(), row, dataIter.getFloat(j + 2));
                 break;
               case DOUBLE:
                 tablet.addValue(
-                    schemaList.get(j).getMeasurementId(), row, dataIter.getDouble(j + 2));
+                    schemaList.get(j).getMeasurementName(), row, dataIter.getDouble(j + 2));
                 break;
               case TEXT:
+              case STRING:
                 tablet.addValue(
-                    schemaList.get(j).getMeasurementId(), row, dataIter.getString(j + 2));
+                    schemaList.get(j).getMeasurementName(), row, dataIter.getString(j + 2));
+                break;
+              case DATE:
+              case BLOB:
+                tablet.addValue(
+                    schemaList.get(j).getMeasurementName(), row, dataIter.getObject(j + 2));
                 break;
               default:
-                System.out.println("Migration of this type of data is not supported");
+                LOGGER.info("Migration of this type of data is not supported");
             }
           }
-          if (tablet.rowSize == tablet.getMaxRowNumber()) {
+          if (tablet.getRowSize() == tablet.getMaxRowNumber()) {
             writerPool.insertTablet(tablet, true);
             tablet.reset();
           }
         }
-        if (tablet.rowSize != 0) {
+        if (tablet.getRowSize() != 0) {
           writerPool.insertTablet(tablet);
           tablet.reset();
         }
 
       } catch (Exception e) {
-        System.out.println(
-            "Loading the " + i + "-th device: " + device + " failed " + e.getMessage());
+        LOGGER.error("Loading the {}-th device: {} failed {}", i, device, e.getMessage());
         return null;
       } finally {
         if (dataSet != null) {
@@ -184,10 +203,10 @@ public class DataMigrationExample {
         }
         long endTime = System.currentTimeMillis();
         long totalTime = endTime - startTime;
-        System.out.println("migrate device ：" + device + " using " + totalTime + " ms");
+        LOGGER.info("migrate device ：{}  using {}  ms", device, totalTime);
       }
 
-      System.out.println("Loading the " + i + "-th device: " + device + " success");
+      LOGGER.info("Loading the {}-th device: {}  success", i, device);
       return null;
     }
   }

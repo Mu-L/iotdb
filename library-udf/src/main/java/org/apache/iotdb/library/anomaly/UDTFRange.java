@@ -19,7 +19,6 @@
 
 package org.apache.iotdb.library.anomaly;
 
-import org.apache.iotdb.library.util.Util;
 import org.apache.iotdb.udf.api.UDTF;
 import org.apache.iotdb.udf.api.access.Row;
 import org.apache.iotdb.udf.api.collector.PointCollector;
@@ -27,6 +26,7 @@ import org.apache.iotdb.udf.api.customizer.config.UDTFConfigurations;
 import org.apache.iotdb.udf.api.customizer.parameter.UDFParameterValidator;
 import org.apache.iotdb.udf.api.customizer.parameter.UDFParameters;
 import org.apache.iotdb.udf.api.customizer.strategy.RowByRowAccessStrategy;
+import org.apache.iotdb.udf.api.exception.UDFException;
 import org.apache.iotdb.udf.api.type.Type;
 
 /** This function is used to detect range anomaly of time series. */
@@ -65,32 +65,40 @@ public class UDTFRange implements UDTF {
       case INT32:
         intValue = row.getInt(0);
         if (intValue > upperBound || intValue < lowerBound) {
-          Util.putValue(collector, dataType, timestamp, intValue);
+          collector.putInt(timestamp, intValue);
         }
         break;
       case INT64:
         longValue = row.getLong(0);
         if (longValue > upperBound || longValue < lowerBound) {
-          Util.putValue(collector, dataType, timestamp, longValue);
+          collector.putLong(timestamp, longValue);
         }
         break;
       case FLOAT:
         floatValue = row.getFloat(0);
         if (floatValue > upperBound || floatValue < lowerBound) {
-          Util.putValue(collector, dataType, timestamp, floatValue);
+          collector.putFloat(timestamp, floatValue);
         }
         break;
       case DOUBLE:
         doubleValue = row.getDouble(0);
         if (doubleValue > upperBound || doubleValue < lowerBound) {
-          Util.putValue(collector, dataType, timestamp, doubleValue);
+          collector.putDouble(timestamp, doubleValue);
         }
         break;
+      case DATE:
+      case TIMESTAMP:
+      case TEXT:
+      case STRING:
+      case BOOLEAN:
+      case BLOB:
       default:
-        throw new Exception("No such kind of data type.");
+        throw new UDFException("No such kind of data type.");
     }
   }
 
   @Override
-  public void terminate(PointCollector collector) throws Exception {}
+  public void terminate(PointCollector collector)
+      throws Exception { // default implementation ignored
+  }
 }
